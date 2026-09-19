@@ -1,5 +1,38 @@
 # Dev log
 
+## 2026-09-19 — Phase 1 league connect + roster ingest (Sleeper DONE, Yahoo built/untested)
+
+**Built**
+- Canonical player sync + resolver: `lib/players.ts` (`syncPlayerCatalog`, `ensureCatalogFresh`,
+  `playerDetailMap`, `buildResolver` for Yahoo yahoo_id + name+pos fallback, `normalizeName`).
+- Sleeper ingest: pure transforms `lib/ingest/sleeper-transform.ts` (`parseLeagueSettings`,
+  `starterSlots`, `rosterToSpots`) + DB layer `lib/ingest/sleeper.ts` (`connectSleeper`,
+  `refreshSleeperLeagues`). Derives ppr/numQbs(SF)/FAAB/numTeams; my-team = owner_id match.
+- Yahoo (read-only): `lib/yahoo/oauth.ts` (auth URL / code exchange / refresh, scope `fspt-r`) +
+  `lib/yahoo/ingest.ts` (`refreshYahooLeagues` via `yahoo-fantasy`, token auto-refresh, defensive
+  extractors) + routes `/api/yahoo/start` & `/api/yahoo/callback`. Ambient types in
+  `types/yahoo-fantasy.d.ts`. **Untested until real Yahoo app creds exist.**
+- UI: `ConnectPanel.tsx` (Sleeper username form + refresh via server actions in `dashboard/actions.ts`;
+  Yahoo connect button, gated on YAHOO_CLIENT_ID) + dashboard renders my roster (starters by slot +
+  bench) per league with parsed settings badges.
+- Added `next-auth.d.ts` (session.user.id typing, same as pickem).
+
+**Verified**
+- 10/10 unit tests pass (`npm test`): settings parsing (PPR/half/std, superflex→numQbs2, FAAB),
+  starter-slot filtering, roster→spots (slot alignment, empty "0" skip, bench, unknown-player
+  fallback), consensus blend (single/avg/trimmed-mean/grouping).
+- `npx tsc --noEmit` clean across the whole app (incl. Yahoo code).
+- DB→UI rendering proven with `scripts/fixture-ingest.ts` (sample PPR league) → dashboard shows
+  starters/bench correctly, no console errors; screenshot taken; fixture then cleared.
+
+**Not yet done / next**
+- Live Sleeper connect against a real username (user chose "build generically" — no username given).
+  Ready to run the moment a username is entered in the UI or `connectSleeper` is called.
+- Yahoo end-to-end needs the user to register a Yahoo app (client id/secret + redirect URI
+  http://localhost:3000/api/yahoo/callback) — then verify `refreshYahooLeagues` extractors vs live
+  JSON (ppr from stat modifiers is a placeholder 0.5).
+- Matchups ingestion (getMatchups) not yet wired to DB — deferred to Phase 2 where start/sit needs it.
+
 ## 2026-09-19 — Phase 0 scaffold + data-layer probe (DONE)
 
 Stood up the app mirroring `pickem`'s stack (Next.js 16, Prisma 6, NextAuth v5, Tailwind v4).
