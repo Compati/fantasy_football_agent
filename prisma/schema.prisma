@@ -1,0 +1,190 @@
+// Fantasy Agent — Prisma schema
+//
+// Local dev uses SQLite (zero external setup): DATABASE_URL="file:./dev.db".
+// For production on Neon, change `provider` to "postgresql", add
+//   directUrl = env("DIRECT_URL")
+// and point the URLs at Neon (pooled for the app, direct for migrations).
+// The schema is kept portable — no native enums (String + app-level unions),
+// Json for flexible settings — so both backends behave identically.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Single app user (auth gate, like pickem). This is a personal tool; one login.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  connections Connection[]
+}
+
+// A link to one fantasy platform for the user. Sleeper needs no auth (just a
+// username); Yahoo stores READ-ONLY OAuth tokens (advise-only — no writes).
+model Connection {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform String // "sleeper" | "yahoo"
+
+  // Sleeper
+  sleeperUsername String?
+  sleeperUserId   String?
+
+  // Yahoo OAuth (read scope only)
+  yahooGuid         String?
+  yahooAccessToken  String?
+  yahooRefreshToken String?
+  yahooExpiresAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  leagues   League[]
+
+  @@unique([userId, platform])
+}
+
+// A league on some platform, with the scoring knobs downstream math needs.
+model League {
+  id           String @id @default(cuid())
+  connectionId String
+  connection   Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  platform   String // "sleeper" | "yahoo"
+  externalId String // platform league id
+  name       String
+  season     Int
+
+  ppr       Float @default(1) // 0 std, 0.5 half, 1 full
+  numTeams  Int   @default(12)
+  numQbs    Int   @default(1) // 2 = superflex
+  faabBudget Int? // waiver FAAB budget, if the league uses one
+
+  rosterPositions Json // ["QB","RB","RB","WR","WR","FLEX",...]
+  scoringSettings Json // raw platform scoring map
+
+  updatedAt DateTime @updatedAt
+  teams     Team[]
+
+  @@unique([platform, externalId])
+}
+
+// A team within a league. `isMine` flags the user's own team.
+model Team {
+  id       String @id @default(cuid())
+  leagueId String
+  league   League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  externalId String // roster_id (sleeper) / team_key (yahoo)
+  name       String
+  ownerName  String?
+  isMine     Boolean @default(false)
+
+  faabBudgetUsed Int?
+  wins           Int?
+  losses         Int?
+
+  roster    RosterSpot[]
+  updatedAt DateTime     @updatedAt
+
+  @@unique([leagueId, externalId])
+}
+
+// One roster slot. Player identity is denormalized (name/position/team) so a
+// roster still renders when a player isn't yet in the canonical catalog; the
+// resolved sleeperId (when known) is the join key to projections/values.
+model RosterSpot {
+  id     String @id @default(cuid())
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  sleeperId String? // resolved canonical id when known
+  name      String
+  position  String
+  nflTeam   String?
+  slot      String // lineup slot or "BN"/"IR"
+  starter   Boolean @default(false)
+}
+
+// Canonical player, seeded from the Sleeper catalog (which carries espn/yahoo
+// ids). The join hub for every projection and trade-value source.
+model Player {
+  sleeperId String  @id
+  espnId    String?
+  yahooId   String?
+  name      String
+  position  String
+  nflTeam   String?
+  updatedAt DateTime @updatedAt
+
+  projections Projection[]
+  tradeValues TradeValue[]
+
+  @@index([espnId])
+  @@index([yahooId])
+}
+
+// One projection reading, tagged by source. The consensus blend lives in app
+// code (lib/projections/consensus.ts), not the DB.
+model Projection {
+  id        String @id @default(cuid())
+  sleeperId String
+  player    Player @relation(fields: [sleeperId], references: [sleeperId], onDelete: Cascade)
+
+  source String // "sleeper" | "espn" | "cbs" | "fantasypros"
+  season Int
+  week   Int
+  points Float
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([sleeperId, source, season, week])
+  @@index([season, week])
+}
+
+// FantasyCalc market value for a player in a given format.
+model TradeValue {
+  id        String @id @default(cuid())
+  sleeperId String
+  player    Player @relation(fields: [sleeperId], references: [sleeperId], onDelete: Cascade)
+
+  isDynasty Boolean
+  ppr       Float
+  numQbs    Int
+  numTeams  Int
+
+  value        Int
+  redraftValue Int
+  overallRank  Int
+  positionRank Int
+  trend30      Int
+  tier         Int?
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([sleeperId, isDynasty, ppr, numQbs, numTeams])
+}
+
+// Community context (Phase 4): Reddit threads + YouTube transcripts, matched to
+// players. playerIds is a JSON array of sleeperIds referenced by the item.
+model NewsItem {
+  id          String   @id @default(cuid())
+  source      String // "reddit" | "youtube"
+  url         String   @unique
+  title       String
+  summary     String?
+  publishedAt DateTime
+  playerIds   Json
+  sentiment   String?
+  createdAt   DateTime @default(now())
+
+  @@index([publishedAt])
+}
