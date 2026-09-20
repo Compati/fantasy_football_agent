@@ -1,5 +1,35 @@
 # Dev log
 
+## 2026-09-19 — Phase 2 decision engine (DONE, verified on real leagues)
+
+**Built**
+- Ingest: `lib/ingest/projections.ts` (Sleeper + ESPN → Projection rows) and
+  `lib/ingest/trade-values.ts` (FantasyCalc per league format). ESPN adapter gained a name+pos
+  fallback → resolved rows jumped **151 → 508** (unresolved 395 → 38).
+- Features: `lib/features/eligibility.ts` (slot rules), `startsit.ts` (greedy optimal lineup +
+  swaps + close calls), `waivers.ts` (free-agent ranking + `faabSuggestion` bid sizing),
+  `trade.ts` (`scoreTrade` + `evaluateTrade`, with a missing-value warning).
+- UI: `/league/[id]` page — start/sit, waiver table (FAAB $), and interactive TradeAnalyzer
+  (client) + `evaluateTradeAction`. Dashboard league names now link here.
+- Cron: `/api/cron/refresh-{players,projections,trade-values,my-leagues}` (CRON_SECRET-guarded).
+
+**Verified live (season 2026, wk 2, real leagues)**
+- `scripts/phase2-check.ts`: all 3 teams get sensible start/sit. Consensus *corrected* a call
+  (single-source said start Pierce; 2-source says Etienne is right → lineup already optimal).
+- Waivers: ranked with FAAB $ (e.g. 15-team QB add $280), trend arrows for risers.
+- Trade UI click-through: give K.Walker (6788) for Travis Hunter (23) → "Strongly favors them
+  −100%". Real values resolve; duplicate-name catalog entries (two "Kenneth Walker") don't affect
+  the UI since it keys off the roster's sleeperId (8151), not name.
+- Cron guard: 401 without secret, 200 with (392 value rows).
+- 18/18 unit tests pass (added optimizeLineup, faabSuggestion, scoreTrade); `tsc` clean.
+
+**Notes / TODO**
+- FantasyCalc returns ~196 players/format → deep-league players (esp. 15-team SF) can lack a trade
+  value; waiver "value" and trade sides show "—"/"no value", and the trade verdict now warns when a
+  side has a missing value (counts it as 0 = a floor). Projections/start-sit unaffected.
+- Projections ingested as full-PPR (all Alex's leagues are PPR). Half/std would need a scoring dim.
+- Name+pos resolver is a fallback only (primary = espnId / roster sleeperId), low dup-name risk.
+
 ## 2026-09-19 — Phase 1 league connect + roster ingest (Sleeper DONE, Yahoo built/untested)
 
 **Built**

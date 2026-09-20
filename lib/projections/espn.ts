@@ -35,9 +35,13 @@ interface EspnPlayerWrap {
   player?: {
     id?: number;
     fullName?: string;
+    defaultPositionId?: number;
     stats?: EspnStat[];
   };
 }
+
+// ESPN's defaultPositionId -> our position abbrev (for the name+pos fallback).
+const ESPN_POSITION: Record<number, string> = { 1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K", 16: "DEF" };
 interface EspnResponse {
   players?: EspnPlayerWrap[];
 }
@@ -55,6 +59,9 @@ export async function getEspnProjections(
   ppr: number,
   espnIdToSleeperId: Map<string, string>,
   limit = 600,
+  // Optional fallback: resolve by (name, position) when the ESPN id doesn't map
+  // to a canonical player. Lifts 2-source consensus coverage substantially.
+  namePosResolver?: (name: string, position: string) => string | null,
 ): Promise<EspnProjectionResult> {
   const filter = {
     players: {
@@ -89,7 +96,11 @@ export async function getEspnProjections(
     if (!proj || proj.appliedTotal == null) continue;
     matched++;
 
-    const sleeperId = espnIdToSleeperId.get(String(espnId));
+    let sleeperId = espnIdToSleeperId.get(String(espnId)) ?? null;
+    if (!sleeperId && namePosResolver && p.fullName && p.defaultPositionId != null) {
+      const pos = ESPN_POSITION[p.defaultPositionId];
+      if (pos) sleeperId = namePosResolver(p.fullName, pos);
+    }
     if (!sleeperId) {
       unresolved++;
       continue;

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { yahooConfigured } from "@/lib/yahoo/oauth";
@@ -51,7 +52,9 @@ export default async function Dashboard({
             return (
               <section key={lg.id} className="rounded-xl border border-border bg-surface p-4">
                 <div className="flex items-baseline justify-between">
-                  <h2 className="font-medium">{lg.name}</h2>
+                  <Link href={`/league/${lg.id}`} className="font-medium text-accent hover:underline">
+                    {lg.name} →
+                  </Link>
                   <span className="text-xs text-muted uppercase">
                     {lg.platform} · {lg.season} · {lg.numTeams}-team ·{" "}
                     {lg.ppr === 1 ? "PPR" : lg.ppr === 0.5 ? "Half-PPR" : "Std"}
