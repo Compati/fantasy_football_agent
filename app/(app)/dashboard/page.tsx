@@ -76,6 +76,12 @@ export default async function Dashboard({
   );
 }
 
+// Compact slot labels so long ones (SUPER_FLEX) don't overflow the column.
+const SLOT_LABELS: Record<string, string> = { SUPER_FLEX: "SFLX", IDP_FLEX: "IDP" };
+function slotLabel(slot: string): string {
+  return SLOT_LABELS[slot] ?? slot;
+}
+
 function RosterList({
   title,
   spots,
@@ -89,7 +95,7 @@ function RosterList({
       <ul className="text-sm divide-y divide-border">
         {spots.map((s) => (
           <li key={s.id} className="flex items-center gap-2 py-1">
-            <span className="w-12 shrink-0 text-xs font-mono text-muted">{s.slot}</span>
+            <span className="w-14 shrink-0 text-xs font-mono text-muted">{slotLabel(s.slot)}</span>
             <span className="flex-1">{s.name}</span>
             <span className="text-xs text-muted">
               {s.position}
