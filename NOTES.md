@@ -1,5 +1,36 @@
 # Dev log
 
+## 2026-09-20 — Phase 3: AI advisor agent (BUILT; needs ANTHROPIC_API_KEY to run)
+
+Reframed from a chatbot (user's call) to a proactive **advisor agent**: one click generates a
+prioritized list of concrete moves for a league — start/sit, waiver adds (with FAAB + who to drop),
+and trade angles — grounded strictly in the numbers we already compute.
+
+**Built**
+- `lib/agent/context.ts` — `buildLeagueContext(teamId)` assembles a compact JSON context (league
+  format, optimal lineup + deltas from `startSitForTeam`, bench, waiver targets from `waiverTargets`,
+  FantasyCalc values). This is the only thing the LLM sees.
+- `lib/agent/advisor.ts` — `generateRecommendations(context, model)` calls Claude (Anthropic SDK)
+  with a strict system prompt (advise-only, no invented injuries/news, output JSON only) and parses
+  the moves. **Model is selectable**: `ADVISOR_MODELS` = Sonnet 5 (default) / Opus 5 / Haiku 4.5;
+  `DEFAULT_ADVISOR_MODEL = claude-sonnet-5`; adaptive thinking on Sonnet/Opus, skipped on Haiku.
+- `Recommendation` Prisma model (migration `recommendations`) caches a report per team+season+week
+  (summary + moves JSON + which model). Regenerated on demand via "Refresh".
+- `app/api/recommendations/route.ts` (POST {teamId, model}) — auth + ownership check, validates the
+  model against the allowlist, builds context, generates, upserts, returns.
+- UI: `league/[id]/Recommendations.tsx` — model dropdown + Generate/Refresh, renders prioritized
+  moves with type/confidence badges; wired into the league page as the headline section. Dashboard
+  now shows a cross-league "This week's moves" digest from cached recommendations.
+- Upgraded `@anthropic-ai/sdk` 0.40 → 0.127 (needed for claude-sonnet-5/opus-5 + adaptive thinking).
+
+**Verified:** tsc clean; UI renders (model picker: Sonnet 5 default, Opus 5, Haiku 4.5 + Generate).
+**NOT verified live** — no `ANTHROPIC_API_KEY` set yet. To finish: add the key to `.env`, restart,
+click Generate on a league, confirm the JSON parses and the moves are sensible. Errors surface
+cleanly (missing-key path returns a clear message).
+
+**Cost note:** Sonnet 5 ≈ $2/$10 per MTok; a generation is ~1–2k in + ~1k out (a cent or two).
+Opus 5 is sharper/pricier, Haiku 4.5 cheapest.
+
 ## 2026-09-20 — Yahoo connect: BLOCKED by Yahoo's new API approval gate
 
 Attempted to connect Yahoo live. OAuth works end-to-end (auth → code → token exchange succeeds,
@@ -35,14 +66,13 @@ your leagues/rosters import; the app shows an optimal start/sit (from a Sleeper+
 consensus), waiver targets with suggested FAAB bids, and a trade analyzer valued for each league's
 exact format. Verified live on 3 real leagues. Yahoo read-only OAuth is built but untested.
 
-**Immediate next — Phase 3: Claude chat agent**
-- Add `@anthropic-ai/sdk` tool-calling over the existing features so you can ask in plain English:
-  "Who do I flex this week?", "Best RB on waivers and what should I bid?", "Is Jefferson for CMC
-  fair?" — grounded in the real numbers (no hallucinated advice).
-- Tools wrap what already exists: `list_my_teams`, `get_roster`, `start_sit` (→ `startSitForTeam`),
-  `waiver_recommendations` (→ `waiverTargets`), `evaluate_trade` (→ `evaluateTrade`),
-  `get_trade_values`. Stream to a chat panel on `/league/[id]` via an `/api/chat` route.
-- Needs `ANTHROPIC_API_KEY` in `.env`.
+**Immediate next — finish Phase 3 (advisor agent is BUILT, not yet run)**
+- Add `ANTHROPIC_API_KEY` to `.env`, restart, and click **Generate** on a league to verify the
+  advisor end-to-end (JSON parses, moves are sensible, dashboard digest populates). Note: the design
+  changed from a chatbot to a proactive advisor — it hands you prioritized moves, you don't ask it
+  questions. Model is selectable (Sonnet 5 default / Opus 5 / Haiku 4.5).
+- Likely follow-ups once it runs: tune the system prompt, add a "generate all leagues" action on the
+  dashboard, and show a rough token/cost estimate.
 
 **Phase 4 — community context (Reddit + YouTube)**
 - `lib/reddit.ts` (free "script" app) pulls r/fantasyfootball injury/news/start-sit threads;

@@ -57,8 +57,11 @@ FantasyCalc→catalog id join rate, and a sample consensus blend.
 - **Phase 2 — Decisions (no LLM) ✅** Multi-source projection consensus + FantasyCalc trade values;
   start/sit optimizer, waiver ranking with FAAB bid sizing, and a trade analyzer — all live at
   `/league/[id]`. 18 unit tests, cron refresh jobs.
-- **Phase 3 — Agent chat** (next): Claude tool-calling over the data (start/sit, waivers, trades).
-- **Phase 4 — Reddit/YouTube context.** · **Phase 5 — player props, X, podcasts, Yahoo verified.**
+- **Phase 3 — AI advisor agent ✅ (built; needs `ANTHROPIC_API_KEY` to run)** One click generates a
+  prioritized list of moves per league (start/sit, waiver + FAAB, trade angles), grounded in the
+  numbers; cross-league digest on the dashboard. Model selectable — Sonnet 5 (default) / Opus 5 /
+  Haiku 4.5. Advise-only.
+- **Phase 4 — Reddit/YouTube context.** · **Phase 5 — player props, X, podcasts, Yahoo (blocked).**
 
 See `NOTES.md` for the running dev log + the detailed roadmap/next steps.
 

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { startSitForTeam } from "@/lib/features/startsit";
 import { waiverTargets } from "@/lib/features/waivers";
 import { TradeAnalyzer } from "./TradeAnalyzer";
+import { Recommendations } from "./Recommendations";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,24 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
     waiverTargets(myTeam.id, { limit: 15 }),
   ]);
 
+  const cachedRec = await prisma.recommendation.findUnique({
+    where: { teamId_season_week: { teamId: myTeam.id, season: league.season, week: startSit.week } },
+  });
+  const initialRec = cachedRec
+    ? {
+        summary: cachedRec.summary,
+        moves: cachedRec.moves as unknown as {
+          priority: number;
+          type: "start_sit" | "waiver" | "trade" | "hold";
+          title: string;
+          detail: string;
+          confidence: "high" | "medium" | "low";
+        }[],
+        generatedAt: cachedRec.updatedAt.toISOString(),
+        model: cachedRec.model,
+      }
+    : null;
+
   const myRoster = myTeam.roster
     .filter((r) => r.sleeperId)
     .map((r) => ({ sleeperId: r.sleeperId as string, name: r.name, position: r.position }));
@@ -61,6 +80,9 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
           {league.faabBudget ? ` · $${waivers.remainingBudget ?? league.faabBudget} FAAB left` : ""}
         </p>
       </header>
+
+      {/* Advisor recommendations */}
+      <Recommendations teamId={myTeam.id} initial={initialRec} />
 
       {/* Start / Sit */}
       <section className="rounded-xl border border-border bg-surface p-4 mb-5">

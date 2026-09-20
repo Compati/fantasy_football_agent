@@ -92,8 +92,9 @@ model Team {
   wins           Int?
   losses         Int?
 
-  roster    RosterSpot[]
-  updatedAt DateTime     @updatedAt
+  roster          RosterSpot[]
+  recommendations Recommendation[]
+  updatedAt       DateTime     @updatedAt
 
   @@unique([leagueId, externalId])
 }
@@ -171,6 +172,26 @@ model TradeValue {
   updatedAt DateTime @updatedAt
 
   @@unique([sleeperId, isDynasty, ppr, numQbs, numTeams])
+}
+
+// A generated advisor report for a team in a given week (cached so the LLM
+// isn't re-invoked on every page load). `moves` is the JSON array of
+// recommendations; `summary` is the one-line headline.
+model Recommendation {
+  id        String @id @default(cuid())
+  teamId    String
+  team      Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  season  Int
+  week    Int
+  summary String
+  moves   Json
+  model   String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([teamId, season, week])
 }
 
 // Community context (Phase 4): Reddit threads + YouTube transcripts, matched to

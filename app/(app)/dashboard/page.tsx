@@ -14,17 +14,27 @@ export default async function Dashboard({
   const user = await requireUser();
   const { yahoo } = await searchParams;
 
-  const [connections, leagues] = await Promise.all([
+  const [connections, leagues, recs] = await Promise.all([
     prisma.connection.findMany({ where: { userId: user.id }, select: { platform: true } }),
     prisma.league.findMany({
       where: { connection: { userId: user.id } },
       include: { teams: { where: { isMine: true }, include: { roster: true } } },
       orderBy: [{ platform: "asc" }, { name: "asc" }],
     }),
+    prisma.recommendation.findMany({
+      where: { team: { isMine: true, league: { connection: { userId: user.id } } } },
+      include: { team: { include: { league: true } } },
+      orderBy: { updatedAt: "desc" },
+    }),
   ]);
 
   const hasSleeper = connections.some((c) => c.platform === "sleeper");
   const hasYahoo = connections.some((c) => c.platform === "yahoo");
+
+  // Latest recommendation per team, for the cross-league "this week" digest.
+  const latestByTeam = new Map<string, (typeof recs)[number]>();
+  for (const r of recs) if (!latestByTeam.has(r.teamId)) latestByTeam.set(r.teamId, r);
+  const digest = [...latestByTeam.values()];
 
   return (
     <main className="flex-1 p-6 max-w-5xl mx-auto w-full">
@@ -40,6 +50,31 @@ export default async function Dashboard({
       )}
 
       <ConnectPanel hasSleeper={hasSleeper} yahooConfigured={yahooConfigured()} hasYahoo={hasYahoo} />
+
+      {digest.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-sm font-medium text-muted uppercase mb-2">This week&rsquo;s moves</h2>
+          <div className="grid gap-3">
+            {digest.map((r) => {
+              const moves = (r.moves as unknown as { title: string; type: string }[]) ?? [];
+              return (
+                <Link
+                  key={r.id}
+                  href={`/league/${r.team.league.id}`}
+                  className="rounded-xl border border-border bg-surface p-4 block hover:border-accent"
+                >
+                  <div className="flex items-baseline justify-between">
+                    <span className="font-medium">{r.team.league.name}</span>
+                    <span className="text-xs text-muted">Week {r.week}</span>
+                  </div>
+                  <p className="text-sm mt-1">{r.summary}</p>
+                  {moves[0] && <p className="text-sm text-accent mt-1">→ {moves[0].title}</p>}
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="mt-8 grid gap-4">
         {leagues.length === 0 ? (
