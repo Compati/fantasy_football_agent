@@ -1,5 +1,33 @@
 # Dev log
 
+## Current state — paused 2026-09-20 (tip commit e142cb5)
+
+**Working & verified live on 3 real Sleeper leagues** (amiller180): rosters, **start/sit** (optimal
+lineup, injury-aware), **waivers + FAAB sizing**, **trade analyzer**, **injuries** (badges + alerts),
+**matchups** (proj vs live + win %, H2H leagues only). SQLite local; dev on port 3005
+(`npm run dev -- -p 3005`). 18 unit tests, tsc clean. Not deployed (local only).
+
+**Built but not yet running:** the **AI advisor** (Phase 3) — one-click prioritized moves per league,
+model selectable (Sonnet 5 default / Opus 5 / Haiku 4.5). It only needs `ANTHROPIC_API_KEY` in `.env`
+to run; everything else is wired and typechecked.
+
+**Blocked (external):** **Yahoo** — OAuth works but Yahoo's Fantasy API now requires manual approval
+(applied for? no). Do NOT re-debug the 403; it's Yahoo's gate. Code is ready if/when approved.
+
+**Resume-here next steps, rough priority:**
+1. **Finish Phase 3** — add `ANTHROPIC_API_KEY`, restart, click Generate on a league, confirm the
+   JSON parses and the moves are sensible (dashboard digest then populates). Likely small follow-ups:
+   prompt tuning, a "generate all leagues" button, token/cost estimate.
+2. **Key-free extensions:** Phase 4 **YouTube** news (no key) + Reddit later (free Reddit app);
+   **deeper trade values** (2nd source so deep-league players aren't blank); **Guillotine survival
+   view** (projected total vs elimination line for CS Guillotine); **deploy to Vercel + Neon** (phone
+   use — switch Prisma provider to postgres + directUrl).
+3. **Yahoo** — only if approved at sports.yahoo.com/developer/access (submit the existing Client ID).
+
+Handy scripts: `npm run probe` (source health), `scripts/connect-sleeper.ts <user>`,
+`scripts/phase2-check.ts` (refresh projections/values + print start/sit), `scripts/sync-players.ts`
+(refresh catalog incl. injuries).
+
 ## 2026-09-20 — Injuries + matchups (DONE, verified live; key-free)
 
 Two Sleeper-native, no-API-key features while the Anthropic key is pending.
