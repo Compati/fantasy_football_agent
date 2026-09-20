@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["yahoo-fantasy"],
+  /* config options here */
 };
 
 export default nextConfig;

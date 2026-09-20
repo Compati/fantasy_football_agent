@@ -1,18 +1,26 @@
-// Yahoo league ingestion (read-only). Uses the `yahoo-fantasy` wrapper with a
-// valid access token to pull the user's NFL leagues, teams, and rosters.
-//
-// NOTE: This path requires a registered Yahoo app + a completed OAuth connect,
-// so it is exercised for the first time once real credentials exist. The OAuth
-// flow (lib/yahoo/oauth.ts) is standard; the response-shape extraction here is
-// coded defensively and may need small tweaks against live data.
+// Yahoo league ingestion (read-only) via the direct REST client. Pulls the
+// user's NFL leagues, settings, all teams, and rosters into the DB — the same
+// shape Sleeper ingest produces, so the decision features work unchanged.
 
-import YahooFantasy from "yahoo-fantasy";
 import { prisma } from "@/lib/db";
 import type { Connection } from "@prisma/client";
 import { refreshAccessToken } from "@/lib/yahoo/oauth";
 import { ensureCatalogFresh, buildResolver } from "@/lib/players";
+import { yahooGet, coll, merge } from "@/lib/yahoo/api";
 
-// Return a non-expired access token, refreshing + persisting if needed.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+// Map Yahoo lineup-slot labels to our canonical vocabulary (lib/features/eligibility.ts).
+const YAHOO_SLOT: Record<string, string> = {
+  "W/R/T": "FLEX",
+  "Q/W/R/T": "SUPER_FLEX",
+  "W/R": "WRRB_FLEX",
+  "W/T": "REC_FLEX",
+  "IR": "IR",
+  "IR+": "IR",
+};
+const mapSlot = (s: string) => YAHOO_SLOT[s] ?? s;
+
 async function getValidAccessToken(connection: Connection): Promise<string> {
   const soon = Date.now() + 60_000;
   if (connection.yahooAccessToken && connection.yahooExpiresAt && connection.yahooExpiresAt.getTime() > soon) {
@@ -32,44 +40,157 @@ async function getValidAccessToken(connection: Connection): Promise<string> {
   return tokens.accessToken;
 }
 
-function makeClient(accessToken: string) {
-  const yf = new YahooFantasy(
-    process.env.YAHOO_CLIENT_ID ?? "",
-    process.env.YAHOO_CLIENT_SECRET ?? "",
-  );
-  yf.setUserToken(accessToken);
-  return yf;
-}
-
 export interface YahooIngestSummary {
   connectionId: string;
   leagues: number;
   teams: number;
 }
 
-// Best-effort ingest. Kept small and defensive; the exact nesting of Yahoo's
-// responses is normalized where it lands. Season defaults to the current NFL
-// game ("nfl").
+// ---- Parsers (defensive against Yahoo's nesting) --------------------------
+
+interface YLeagueMeta {
+  leagueKey: string;
+  name: string;
+  season: number;
+  numTeams: number;
+}
+
+function parseMyLeagues(fc: any): YLeagueMeta[] {
+  const out: YLeagueMeta[] = [];
+  const users = coll(fc?.users);
+  for (const u of users) {
+    const userArr = u.user; // [ {guid...}, { games } ]
+    const gamesNode = Array.isArray(userArr) ? userArr.find((x: any) => x?.games)?.games : undefined;
+    for (const g of coll(gamesNode)) {
+      const gameArr = g.game; // [ {game meta}, { leagues } ]
+      const leaguesNode = Array.isArray(gameArr) ? gameArr.find((x: any) => x?.leagues)?.leagues : undefined;
+      for (const l of coll(leaguesNode)) {
+        const m = merge(l.league);
+        if (!m.league_key) continue;
+        out.push({
+          leagueKey: String(m.league_key),
+          name: String(m.name ?? "Yahoo League"),
+          season: Number(m.season ?? new Date().getFullYear()),
+          numTeams: Number(m.num_teams ?? 12),
+        });
+      }
+    }
+  }
+  return out;
+}
+
+interface YSettings {
+  ppr: number;
+  numQbs: number;
+  faabBudget: number | null;
+  rosterPositions: string[]; // canonical, expanded (one entry per slot)
+}
+
+function parseSettings(fc: any): YSettings {
+  const leagueArr = fc?.league; // [ {league meta}, { settings: [...] } ]
+  const settingsNode = Array.isArray(leagueArr) ? leagueArr.find((x: any) => x?.settings)?.settings : undefined;
+  const s = merge(settingsNode);
+
+  // Roster positions: [ { roster_position: { position, count } } ] -> flat list.
+  const positions: string[] = [];
+  for (const rp of Array.isArray(s.roster_positions) ? s.roster_positions : coll(s.roster_positions)) {
+    const p = rp.roster_position ?? rp;
+    const pos = mapSlot(String(p.position));
+    const count = Number(p.count ?? 1);
+    for (let i = 0; i < count; i++) positions.push(pos);
+  }
+  const numQbs = positions.includes("SUPER_FLEX") ? 2 : 1;
+
+  // PPR from the receptions stat modifier (Yahoo stat_id 11).
+  let ppr = 0;
+  const statsNode = s.stat_modifiers?.stats ?? s.stat_modifiers;
+  for (const st of Array.isArray(statsNode) ? statsNode : coll(statsNode)) {
+    const stat = st.stat ?? st;
+    if (String(stat.stat_id) === "11") {
+      const v = Number(stat.value);
+      ppr = v >= 1 ? 1 : v >= 0.5 ? 0.5 : 0;
+    }
+  }
+
+  const usesFaab = String(s.uses_faab ?? "0") === "1";
+  return { ppr, numQbs, faabBudget: usesFaab ? 100 : null, rosterPositions: positions };
+}
+
+interface YTeam {
+  teamKey: string;
+  name: string;
+  isMine: boolean;
+  faabBalance: number | null;
+}
+
+function parseTeams(fc: any): YTeam[] {
+  const leagueArr = fc?.league;
+  const teamsNode = Array.isArray(leagueArr) ? leagueArr.find((x: any) => x?.teams)?.teams : undefined;
+  return coll(teamsNode).map((t: any) => {
+    const m = merge(t.team);
+    return {
+      teamKey: String(m.team_key ?? ""),
+      name: String(m.name ?? "Team"),
+      isMine: String(m.is_owned_by_current_login ?? "0") === "1",
+      faabBalance: m.faab_balance != null ? Number(m.faab_balance) : null,
+    };
+  });
+}
+
+interface YRosterPlayer {
+  yahooId: string;
+  name: string;
+  position: string;
+  nflTeam: string | null;
+  slot: string;
+}
+
+function parseRoster(fc: any): YRosterPlayer[] {
+  const teamArr = fc?.team; // [ [team meta], { roster: {...} } ]
+  const rosterNode = Array.isArray(teamArr) ? teamArr.find((x: any) => x?.roster)?.roster : undefined;
+  // roster is an object; the players collection sits under a "0" key.
+  const playersNode = rosterNode?.["0"]?.players ?? rosterNode?.players;
+  return coll(playersNode).map((p: any) => {
+    const arr = p.player; // [ [meta objs], { selected_position } ]
+    const meta = merge(Array.isArray(arr) ? arr[0] : arr);
+    const selNode = Array.isArray(arr) ? arr.find((x: any) => x?.selected_position)?.selected_position : undefined;
+    const sel = merge(selNode);
+    const nameObj = meta.name;
+    const name = typeof nameObj === "object" ? String(nameObj.full ?? "") : String(nameObj ?? "");
+    const pos = String(meta.display_position ?? meta.primary_position ?? "?").split(",")[0];
+    return {
+      yahooId: String(meta.player_id ?? ""),
+      name,
+      position: pos,
+      nflTeam: (meta.editorial_team_abbr as string) ?? null,
+      slot: mapSlot(String(sel.position ?? "BN")),
+    };
+  });
+}
+
+// ---- Orchestration --------------------------------------------------------
+
 export async function refreshYahooLeagues(connectionId: string): Promise<YahooIngestSummary> {
   const connection = await prisma.connection.findUniqueOrThrow({ where: { id: connectionId } });
-  const accessToken = await getValidAccessToken(connection);
-  const yf = makeClient(accessToken);
+  const token = await getValidAccessToken(connection);
   await ensureCatalogFresh();
   const resolver = await buildResolver();
 
-  // Leagues the user is in for the current NFL season.
-  const gameLeagues: unknown = await yf.user.game_leagues("nfl");
-  const leagues = extractLeagues(gameLeagues);
-
+  const leagues = parseMyLeagues(await yahooGet(token, "/users;use_login=1/games;game_keys=nfl/leagues"));
   let teamCount = 0;
+
   for (const lg of leagues) {
+    const settings = parseSettings(await yahooGet(token, `/league/${lg.leagueKey}/settings`));
     const league = await prisma.league.upsert({
       where: { platform_externalId: { platform: "yahoo", externalId: lg.leagueKey } },
       update: {
         name: lg.name,
         season: lg.season,
+        ppr: settings.ppr,
         numTeams: lg.numTeams,
-        rosterPositions: lg.rosterPositions,
+        numQbs: settings.numQbs,
+        faabBudget: settings.faabBudget,
+        rosterPositions: settings.rosterPositions,
         scoringSettings: {},
         connectionId,
       },
@@ -79,24 +200,34 @@ export async function refreshYahooLeagues(connectionId: string): Promise<YahooIn
         externalId: lg.leagueKey,
         name: lg.name,
         season: lg.season,
-        ppr: lg.ppr,
+        ppr: settings.ppr,
         numTeams: lg.numTeams,
-        numQbs: lg.numQbs,
-        faabBudget: lg.faabBudget,
-        rosterPositions: lg.rosterPositions,
+        numQbs: settings.numQbs,
+        faabBudget: settings.faabBudget,
+        rosterPositions: settings.rosterPositions,
         scoringSettings: {},
       },
     });
 
-    const teams = extractTeams(await yf.league.teams(lg.leagueKey));
+    const teams = parseTeams(await yahooGet(token, `/league/${lg.leagueKey}/teams`));
     for (const t of teams) {
       const team = await prisma.team.upsert({
         where: { leagueId_externalId: { leagueId: league.id, externalId: t.teamKey } },
-        update: { name: t.name, isMine: t.isMine },
-        create: { leagueId: league.id, externalId: t.teamKey, name: t.name, isMine: t.isMine },
+        update: {
+          name: t.name,
+          isMine: t.isMine,
+          faabBudgetUsed: t.faabBalance != null && settings.faabBudget != null ? settings.faabBudget - t.faabBalance : null,
+        },
+        create: {
+          leagueId: league.id,
+          externalId: t.teamKey,
+          name: t.name,
+          isMine: t.isMine,
+          faabBudgetUsed: t.faabBalance != null && settings.faabBudget != null ? settings.faabBudget - t.faabBalance : null,
+        },
       });
 
-      const players = extractRoster(await yf.team.roster(t.teamKey));
+      const players = parseRoster(await yahooGet(token, `/team/${t.teamKey}/roster`));
       const spots = players.map((p) => ({
         teamId: team.id,
         sleeperId: resolver.byYahooId(p.yahooId) ?? resolver.byNamePos(p.name, p.position),
@@ -113,73 +244,4 @@ export async function refreshYahooLeagues(connectionId: string): Promise<YahooIn
   }
 
   return { connectionId, leagues: leagues.length, teams: teamCount };
-}
-
-// ---- Defensive extractors (normalize Yahoo's nested shapes) ----------------
-
-interface YLeague {
-  leagueKey: string;
-  name: string;
-  season: number;
-  numTeams: number;
-  numQbs: number;
-  ppr: number;
-  faabBudget: number | null;
-  rosterPositions: string[];
-}
-
-function extractLeagues(raw: unknown): YLeague[] {
-  // yahoo-fantasy returns { games: [{ leagues: [...] }] } for game_leagues.
-  const out: YLeague[] = [];
-  const games = (raw as { games?: unknown[] })?.games ?? [];
-  for (const g of games) {
-    const lgs = (g as { leagues?: unknown[] })?.leagues ?? [];
-    for (const l of lgs) {
-      const lg = l as Record<string, unknown>;
-      const positions = (lg.roster_positions as { position: string }[] | undefined)?.map((p) => p.position) ?? [];
-      out.push({
-        leagueKey: String(lg.league_key ?? ""),
-        name: String(lg.name ?? "Yahoo League"),
-        season: Number(lg.season ?? new Date().getFullYear()),
-        numTeams: Number(lg.num_teams ?? 12),
-        numQbs: positions.filter((p) => p === "QB" || p === "Q/W/R/T").length >= 2 ? 2 : 1,
-        ppr: 0.5, // refined from stat modifiers once verified against live data
-        faabBudget: lg.faab_balance != null ? Number(lg.faab_balance) : null,
-        rosterPositions: positions,
-      });
-    }
-  }
-  return out;
-}
-
-interface YTeam { teamKey: string; name: string; isMine: boolean }
-
-function extractTeams(raw: unknown): YTeam[] {
-  const teams = (raw as { teams?: unknown[] })?.teams ?? [];
-  return teams.map((t) => {
-    const tm = t as Record<string, unknown>;
-    return {
-      teamKey: String(tm.team_key ?? ""),
-      name: String(tm.name ?? "Team"),
-      isMine: Boolean(tm.is_owned_by_current_login),
-    };
-  });
-}
-
-interface YPlayer { yahooId: string; name: string; position: string; nflTeam: string | null; slot: string }
-
-function extractRoster(raw: unknown): YPlayer[] {
-  const roster = (raw as { roster?: unknown[] })?.roster ?? [];
-  return roster.map((p) => {
-    const pl = p as Record<string, unknown>;
-    const name = (pl.name as { full?: string } | undefined)?.full ?? String(pl.name ?? "");
-    const selected = pl.selected_position as { position?: string } | undefined;
-    return {
-      yahooId: String(pl.player_id ?? ""),
-      name,
-      position: String(pl.display_position ?? pl.primary_position ?? "?"),
-      nflTeam: (pl.editorial_team_abbr as string | undefined) ?? null,
-      slot: selected?.position ?? "BN",
-    };
-  });
 }

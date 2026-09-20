@@ -52,7 +52,8 @@ FantasyCalc→catalog id join rate, and a sample consensus blend.
 - **Phase 0 — Scaffold ✅** Next.js app, Prisma schema + migration, NextAuth single-user gate,
   data clients (Sleeper / ESPN / FantasyCalc), consensus blend, and the `probe` smoke test.
 - **Phase 1 — League connect ✅** Sleeper username connect + roster ingest (verified live on 3 real
-  leagues, 0 unresolved); Yahoo read-only OAuth connect + ingest (built, awaits a Yahoo app).
+  leagues, 0 unresolved); Yahoo read-only OAuth connect + REST ingest (built & working through token
+  exchange, but the Fantasy API itself is gated behind Yahoo's 2026 manual-approval program — see NOTES).
 - **Phase 2 — Decisions (no LLM) ✅** Multi-source projection consensus + FantasyCalc trade values;
   start/sit optimizer, waiver ranking with FAAB bid sizing, and a trade analyzer — all live at
   `/league/[id]`. 18 unit tests, cron refresh jobs.

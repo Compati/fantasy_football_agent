@@ -1,5 +1,33 @@
 # Dev log
 
+## 2026-09-20 — Yahoo connect: BLOCKED by Yahoo's new API approval gate
+
+Attempted to connect Yahoo live. OAuth works end-to-end (auth → code → token exchange succeeds,
+tokens saved). But **every Fantasy API call returns 403 "This application is not authorized to use
+the Fantasy Sports API."**
+
+Root cause is external: **as of 2026-07-22 Yahoo removed self-serve Fantasy Sports API access.**
+`developer.yahoo.com/fantasysports` now redirects to `sports.yahoo.com/developer` — a manual
+apply-and-review approval program. A freshly created app (with Fantasy Sports–Read checked) is NOT
+provisioned for the API until Yahoo approves it. Nothing in the app settings fixes this; editing an
+existing app to add the permission also doesn't help.
+
+**Status:** our code is correct and ready. To use Yahoo, Alex must apply at
+`sports.yahoo.com/developer/access/` (include the existing Client ID) and wait for approval; once
+approved the existing flow should work with no code change.
+
+**Work done this session (kept, unblocked-ready):**
+- Replaced the `yahoo-fantasy` npm package (fails to load under Next 16 Turbopack:
+  "Failed to load external module … Function.prototype.apply was called on undefined") with a direct
+  REST client `lib/yahoo/api.ts` + rewritten `lib/yahoo/ingest.ts` (parses Yahoo's nested JSON;
+  maps Yahoo slot labels W/R/T→FLEX, Q/W/R/T→SUPER_FLEX; derives ppr from stat_id 11, numQbs, FAAB).
+  Removed the dependency, its `.d.ts`, and the `serverExternalPackages` entry.
+- Local HTTPS dev for the OAuth redirect: self-signed cert in `/certs` (gitignored, generated with
+  openssl — `next dev --experimental-https` hung on mkcert's CA-install prompt), `npm run dev:https`,
+  and a `fantasy-agent-https` launch config. Redirect URI = `https://localhost:3005/api/yahoo/callback`.
+- A yahoo Connection row with valid tokens now exists (tokens save before ingest); it has no leagues
+  until API access is granted. `refreshYahooLeagues(connectionId)` can be re-run then.
+
 ## Roadmap & next steps
 
 **Done so far (Phases 0–2):** a working, advise-only decision tool. Connect Sleeper by username →

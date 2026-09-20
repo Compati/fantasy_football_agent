@@ -43,3 +43,6 @@ next-env.d.ts
 # Local cache of fetched fixtures / probe output
 /.cache
 /scratch
+
+# Local HTTPS dev certificate (self-signed; for Yahoo OAuth redirect)
+/certs
