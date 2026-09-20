@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { startSitForTeam } from "@/lib/features/startsit";
 import { waiverTargets } from "@/lib/features/waivers";
+import { getMatchup } from "@/lib/features/matchup";
+import { InjuryBadge } from "@/components/InjuryBadge";
 import { TradeAnalyzer } from "./TradeAnalyzer";
 import { Recommendations } from "./Recommendations";
 
@@ -33,9 +35,10 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const [startSit, waivers] = await Promise.all([
+  const [startSit, waivers, matchup] = await Promise.all([
     startSitForTeam(myTeam.id),
     waiverTargets(myTeam.id, { limit: 15 }),
+    getMatchup(myTeam.id).catch(() => null),
   ]);
 
   const cachedRec = await prisma.recommendation.findUnique({
@@ -81,6 +84,40 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
         </p>
       </header>
 
+      {/* Matchup */}
+      {matchup && matchup.opponent && (
+        <section className="rounded-xl border border-border bg-surface p-4 mb-5">
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              <div className="font-medium">{matchup.me.teamName}</div>
+              <div className="text-muted">
+                Proj {matchup.me.projected}
+                {matchup.me.actual > 0 ? ` · Live ${matchup.me.actual}` : ""}
+              </div>
+            </div>
+            <div className="text-center px-3">
+              {matchup.winProb != null ? (
+                <>
+                  <div className={`text-lg font-semibold ${matchup.winProb >= 0.5 ? "text-good" : "text-bad"}`}>
+                    {Math.round(matchup.winProb * 100)}%
+                  </div>
+                  <div className="text-[10px] text-muted uppercase">win prob</div>
+                </>
+              ) : (
+                <div className="text-xs text-muted">vs</div>
+              )}
+            </div>
+            <div className="text-sm text-right">
+              <div className="font-medium">{matchup.opponent.teamName}</div>
+              <div className="text-muted">
+                Proj {matchup.opponent.projected}
+                {matchup.opponent.actual > 0 ? ` · Live ${matchup.opponent.actual}` : ""}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Advisor recommendations */}
       <Recommendations teamId={myTeam.id} initial={initialRec} />
 
@@ -94,6 +131,17 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
               : "Your lineup is already optimal"}
           </span>
         </div>
+
+        {startSit.injuryAlerts.length > 0 && (
+          <div className="mb-3 rounded-lg border border-warn/40 bg-warn/5 p-2 text-sm">
+            {startSit.injuryAlerts.map((a, i) => (
+              <div key={i} className={a.starting ? "text-bad" : "text-warn"}>
+                <InjuryBadge status={a.status} /> {a.player}
+                {a.starting ? " — in your starting lineup" : " (bench)"}
+              </div>
+            ))}
+          </div>
+        )}
 
         {startSit.start.length > 0 && (
           <div className="mb-3 text-sm">
@@ -114,7 +162,10 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
           {startSit.lineup.map((a, i) => (
             <div key={i} className="flex items-center gap-2 text-sm py-0.5">
               <span className="w-12 shrink-0 text-xs font-mono text-muted">{slotLabel(a.slot)}</span>
-              <span className="flex-1">{a.player?.name ?? "—"}</span>
+              <span className="flex-1">
+                {a.player?.name ?? "—"}
+                {a.player?.injuryStatus && <InjuryBadge status={a.player.injuryStatus} />}
+              </span>
               <span className="text-xs text-muted">
                 {a.player ? `${a.player.proj}` : ""}
                 {a.player && a.player.sources < 2 ? " ·1src" : ""}
@@ -190,3 +241,4 @@ function BackLink() {
     </Link>
   );
 }
+

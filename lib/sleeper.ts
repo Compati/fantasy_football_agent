@@ -105,6 +105,7 @@ interface SleeperCatalogEntry {
   team?: string | null;
   espn_id?: number | string | null;
   yahoo_id?: number | string | null;
+  injury_status?: string | null;
 }
 
 export async function getPlayersCatalog(): Promise<Record<string, SleeperCatalogEntry>> {
@@ -129,6 +130,7 @@ export function toCanonicalPlayers(
       name,
       position: p.position,
       team: p.team ?? null,
+      injuryStatus: p.injury_status || null,
     });
   }
   return out;

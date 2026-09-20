@@ -1,5 +1,34 @@
 # Dev log
 
+## 2026-09-20 — Injuries + matchups (DONE, verified live; key-free)
+
+Two Sleeper-native, no-API-key features while the Anthropic key is pending.
+
+**Injuries & status**
+- Captured `injury_status` from the Sleeper catalog (already downloaded) → `Player.injuryStatus`
+  (migration `player_injury_status`); `syncPlayerCatalog` now refreshes it. Re-sync populated 722
+  currently-injured players.
+- Start/sit is injury-aware: `UNAVAILABLE_STATUS` (Out/Doubtful/IR/PUP/Sus/NA/DNR/COV) players are
+  projected 0 so the optimizer benches them (surfacing as a swap); `startSitForTeam` returns
+  `injuryAlerts` (rostered players with a designation, starters first).
+- UI: shared `components/InjuryBadge.tsx` (Q amber, else red) on the start/sit lineup + dashboard
+  rosters; an injury-alert banner on the league page. Advisor context now includes `injuries` and
+  the system prompt tells it to act on them.
+
+**Matchups / opponent**
+- `lib/features/matchup.ts` `getMatchup(teamId, week)` — groups Sleeper matchups by `matchup_id`,
+  finds the opponent, computes each side's projected score from set starters' consensus projections,
+  reads live `points`, and a win probability (normal model, combined stdev ~38).
+- UI: a matchup banner on the league page (my proj/live vs opponent proj/live + win %).
+
+**Verified live (Week 2):** Escalated Calls (14-team H2H) shows "Manufactured Damage 131.88 proj /
+22.5 live vs Expired 2023 Wemby 132.82, 49% win"; PUP Zach Charbonnet flagged + benched by the
+optimizer; Ladd McConkey (Q) badged in CS Guillotine's lineup. tsc clean, 18 tests pass.
+
+**Note:** CS Guillotine is a Guillotine format (no head-to-head — play the field, low scorer
+eliminated), so the matchup banner correctly hides there. Future: show "projected total vs the
+survival line" for Guillotine leagues instead.
+
 ## 2026-09-20 — Phase 3: AI advisor agent (BUILT; needs ANTHROPIC_API_KEY to run)
 
 Reframed from a chatbot (user's call) to a proactive **advisor agent**: one click generates a

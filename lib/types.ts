@@ -21,6 +21,7 @@ export interface CanonicalPlayer {
   name: string;
   position: Position;
   team: string | null; // NFL team abbrev, e.g. "SF"
+  injuryStatus: string | null; // "Questionable" | "Doubtful" | "Out" | "IR" | ...
 }
 
 // One projection reading for a player in a given week from a given source.

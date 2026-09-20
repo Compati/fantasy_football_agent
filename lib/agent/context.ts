@@ -24,6 +24,7 @@ export interface LeagueContext {
     shouldSit: { player: string; proj: number }[];
     closeCalls: { starter: string; alternative: string; gap: number }[];
   };
+  injuries: { player: string; status: string; starting: boolean }[];
   bench: { player: string; position: string; proj: number }[];
   waiverTargets: {
     player: string;
@@ -79,6 +80,7 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       shouldSit: ss.sit.map((p) => ({ player: p.name, proj: p.proj })),
       closeCalls: ss.closeCalls.slice(0, 5).map((c) => ({ starter: c.starter.name, alternative: c.alternative.name, gap: c.gap })),
     },
+    injuries: ss.injuryAlerts,
     bench: bench.filter((b) => !ss.lineup.some((a) => a.player?.name === b.player)),
     waiverTargets: wv.targets.map((t) => ({
       player: t.name,

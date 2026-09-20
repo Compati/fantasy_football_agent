@@ -7,14 +7,20 @@ import { getNflState } from "@/lib/sleeper";
 import { blendProjections } from "@/lib/projections/consensus";
 import { starterSlots } from "@/lib/ingest/sleeper-transform";
 import { isEligible, slotRestrictiveness } from "@/lib/features/eligibility";
+import { playerDetailMap } from "@/lib/players";
 import type { ProjectionRow } from "@/lib/types";
+
+// Designations that mean the player won't play — the optimizer must not start
+// them. Questionable is a flag only (still projectable).
+export const UNAVAILABLE_STATUS = new Set(["Out", "Doubtful", "IR", "PUP", "Sus", "NA", "DNR", "COV"]);
 
 export interface LineupPlayer {
   sleeperId: string;
   name: string;
   position: string;
-  proj: number; // consensus projection (0 if none)
+  proj: number; // consensus projection (0 if unavailable)
   sources: number; // how many projection sources backed it
+  injuryStatus?: string | null;
 }
 
 export interface SlotAssignment {
@@ -66,6 +72,7 @@ export interface StartSitResult {
   start: LineupPlayer[]; // move these into the lineup
   sit: LineupPlayer[]; // move these to the bench
   closeCalls: { starter: LineupPlayer; alternative: LineupPlayer; gap: number }[];
+  injuryAlerts: { player: string; status: string; starting: boolean }[]; // rostered players with a designation
 }
 
 const CLOSE_CALL_GAP = 1.5;
@@ -87,19 +94,26 @@ export async function startSitForTeam(
   // Consensus projection for each rostered player that maps to a canonical id.
   const rostered = team.roster.filter((r) => r.sleeperId);
   const ids = rostered.map((r) => r.sleeperId as string);
-  const projRows = await prisma.projection.findMany({
-    where: { sleeperId: { in: ids }, season, week: w },
-  });
+  const [projRows, detail] = await Promise.all([
+    prisma.projection.findMany({ where: { sleeperId: { in: ids }, season, week: w } }),
+    playerDetailMap(ids),
+  ]);
   const consensus = blendProjections(projRows as unknown as ProjectionRow[]);
 
   const players: LineupPlayer[] = rostered.map((r) => {
-    const c = consensus.get(r.sleeperId as string);
+    const id = r.sleeperId as string;
+    const c = consensus.get(id);
+    const injuryStatus = detail.get(id)?.injuryStatus ?? null;
+    const unavailable = !!injuryStatus && UNAVAILABLE_STATUS.has(injuryStatus);
     return {
-      sleeperId: r.sleeperId as string,
+      sleeperId: id,
       name: r.name,
       position: r.position,
-      proj: c?.points ?? 0,
+      // A ruled-out player projects 0 so the optimizer benches them for an
+      // available option (which then shows up as a start/sit swap).
+      proj: unavailable ? 0 : c?.points ?? 0,
       sources: c?.n ?? 0,
+      injuryStatus,
     };
   });
   const byId = new Map(players.map((p) => [p.sleeperId, p]));
@@ -129,6 +143,15 @@ export async function startSitForTeam(
     }
   }
 
+  const injuryAlerts = rostered
+    .map((r) => {
+      const status = detail.get(r.sleeperId as string)?.injuryStatus;
+      return status ? { player: r.name, status, starting: r.starter } : null;
+    })
+    .filter((a): a is { player: string; status: string; starting: boolean } => a !== null)
+    // Starters first, then by severity-ish (Out before Questionable).
+    .sort((a, b) => Number(b.starting) - Number(a.starting));
+
   return {
     season,
     week: w,
@@ -139,5 +162,6 @@ export async function startSitForTeam(
     start,
     sit,
     closeCalls,
+    injuryAlerts,
   };
 }

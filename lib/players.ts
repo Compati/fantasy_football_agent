@@ -38,16 +38,17 @@ export async function syncPlayerCatalog(): Promise<{ total: number; created: num
         name: p.name,
         position: p.position,
         nflTeam: p.team,
+        injuryStatus: p.injuryStatus,
       })),
     });
   }
 
-  // Refresh volatile fields (team) for players already present.
+  // Refresh volatile fields (team, injury status) for players already present.
   for (const p of players) {
     if (!existing.has(p.sleeperId)) continue;
     await prisma.player.update({
       where: { sleeperId: p.sleeperId },
-      data: { nflTeam: p.team, position: p.position, name: p.name },
+      data: { nflTeam: p.team, position: p.position, name: p.name, injuryStatus: p.injuryStatus },
     }).catch(() => {});
   }
 
@@ -71,15 +72,25 @@ export async function ensureCatalogFresh(maxAgeHours = 24): Promise<void> {
   if (ageHours > maxAgeHours) await syncPlayerCatalog();
 }
 
-// Lightweight lookup of display details by sleeperId (name/pos/team).
-export type PlayerDetail = { name: string; position: string; nflTeam: string | null };
+// Lightweight lookup of display details by sleeperId (name/pos/team/injury).
+export type PlayerDetail = {
+  name: string;
+  position: string;
+  nflTeam: string | null;
+  injuryStatus?: string | null;
+};
 
 export async function playerDetailMap(sleeperIds: string[]): Promise<Map<string, PlayerDetail>> {
   const rows = await prisma.player.findMany({
     where: { sleeperId: { in: sleeperIds } },
-    select: { sleeperId: true, name: true, position: true, nflTeam: true },
+    select: { sleeperId: true, name: true, position: true, nflTeam: true, injuryStatus: true },
   });
-  return new Map(rows.map((r) => [r.sleeperId, { name: r.name, position: r.position, nflTeam: r.nflTeam }]));
+  return new Map(
+    rows.map((r) => [
+      r.sleeperId,
+      { name: r.name, position: r.position, nflTeam: r.nflTeam, injuryStatus: r.injuryStatus },
+    ]),
+  );
 }
 
 // Resolver for players arriving from Yahoo (which gives a yahoo_id and a name).

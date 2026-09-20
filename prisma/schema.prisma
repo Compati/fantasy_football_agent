@@ -118,13 +118,14 @@ model RosterSpot {
 // Canonical player, seeded from the Sleeper catalog (which carries espn/yahoo
 // ids). The join hub for every projection and trade-value source.
 model Player {
-  sleeperId String  @id
-  espnId    String?
-  yahooId   String?
-  name      String
-  position  String
-  nflTeam   String?
-  updatedAt DateTime @updatedAt
+  sleeperId    String  @id
+  espnId       String?
+  yahooId      String?
+  name         String
+  position     String
+  nflTeam      String?
+  injuryStatus String? // "Questionable" | "Doubtful" | "Out" | "IR" | "PUP" | ...
+  updatedAt    DateTime @updatedAt
 
   projections Projection[]
   tradeValues TradeValue[]

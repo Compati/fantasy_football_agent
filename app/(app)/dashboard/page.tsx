@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { yahooConfigured } from "@/lib/yahoo/oauth";
+import { InjuryBadge } from "@/components/InjuryBadge";
 import { ConnectPanel } from "./ConnectPanel";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,18 @@ export default async function Dashboard({
   const latestByTeam = new Map<string, (typeof recs)[number]>();
   for (const r of recs) if (!latestByTeam.has(r.teamId)) latestByTeam.set(r.teamId, r);
   const digest = [...latestByTeam.values()];
+
+  // Injury status for every rostered player shown, keyed by sleeperId.
+  const rosterIds = leagues.flatMap((lg) =>
+    (lg.teams[0]?.roster ?? []).map((r) => r.sleeperId).filter((x): x is string => !!x),
+  );
+  const injuryRows = rosterIds.length
+    ? await prisma.player.findMany({
+        where: { sleeperId: { in: rosterIds }, injuryStatus: { not: null } },
+        select: { sleeperId: true, injuryStatus: true },
+      })
+    : [];
+  const injuryMap = new Map(injuryRows.map((p) => [p.sleeperId, p.injuryStatus as string]));
 
   return (
     <main className="flex-1 p-6 max-w-5xl mx-auto w-full">
@@ -82,8 +95,10 @@ export default async function Dashboard({
         ) : (
           leagues.map((lg) => {
             const team = lg.teams[0];
-            const starters = team?.roster.filter((r) => r.starter) ?? [];
-            const bench = team?.roster.filter((r) => !r.starter) ?? [];
+            const withInjury = (rows: typeof team.roster) =>
+              rows.map((r) => ({ ...r, injuryStatus: r.sleeperId ? injuryMap.get(r.sleeperId) ?? null : null }));
+            const starters = withInjury(team?.roster.filter((r) => r.starter) ?? []);
+            const bench = withInjury(team?.roster.filter((r) => !r.starter) ?? []);
             return (
               <section key={lg.id} className="rounded-xl border border-border bg-surface p-4">
                 <div className="flex items-baseline justify-between">
@@ -125,7 +140,14 @@ function RosterList({
   spots,
 }: {
   title: string;
-  spots: { id: string; slot: string; name: string; position: string; nflTeam: string | null }[];
+  spots: {
+    id: string;
+    slot: string;
+    name: string;
+    position: string;
+    nflTeam: string | null;
+    injuryStatus?: string | null;
+  }[];
 }) {
   return (
     <div>
@@ -134,7 +156,10 @@ function RosterList({
         {spots.map((s) => (
           <li key={s.id} className="flex items-center gap-2 py-1">
             <span className="w-14 shrink-0 text-xs font-mono text-muted">{slotLabel(s.slot)}</span>
-            <span className="flex-1">{s.name}</span>
+            <span className="flex-1">
+              {s.name}
+              {s.injuryStatus && <InjuryBadge status={s.injuryStatus} />}
+            </span>
             <span className="text-xs text-muted">
               {s.position}
               {s.nflTeam ? ` · ${s.nflTeam}` : ""}
