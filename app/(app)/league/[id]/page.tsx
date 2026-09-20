@@ -8,6 +8,10 @@ import { TradeAnalyzer } from "./TradeAnalyzer";
 
 export const dynamic = "force-dynamic";
 
+// Compact slot labels so long ones (SUPER_FLEX) don't overflow.
+const SLOT_LABELS: Record<string, string> = { SUPER_FLEX: "SFLX", IDP_FLEX: "IDP" };
+const slotLabel = (s: string) => SLOT_LABELS[s] ?? s;
+
 export default async function LeaguePage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await params;
@@ -87,7 +91,7 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
         <div className="grid gap-1 sm:grid-cols-2">
           {startSit.lineup.map((a, i) => (
             <div key={i} className="flex items-center gap-2 text-sm py-0.5">
-              <span className="w-14 shrink-0 text-xs font-mono text-muted">{a.slot}</span>
+              <span className="w-12 shrink-0 text-xs font-mono text-muted">{slotLabel(a.slot)}</span>
               <span className="flex-1">{a.player?.name ?? "—"}</span>
               <span className="text-xs text-muted">
                 {a.player ? `${a.player.proj}` : ""}
