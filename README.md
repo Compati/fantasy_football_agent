@@ -51,9 +51,22 @@ FantasyCalc→catalog id join rate, and a sample consensus blend.
 
 - **Phase 0 — Scaffold ✅** Next.js app, Prisma schema + migration, NextAuth single-user gate,
   data clients (Sleeper / ESPN / FantasyCalc), consensus blend, and the `probe` smoke test.
-- **Phase 1 — My leagues** (next): Sleeper + Yahoo connect, roster/matchup ingestion, dashboard.
-- **Phase 2 — Decisions (no LLM):** start/sit, waivers + FAAB, trade analyzer.
-- **Phase 3 — Agent chat.** · **Phase 4 — Reddit/YouTube.** · **Phase 5 — props, X, podcasts.**
+- **Phase 1 — League connect ✅** Sleeper username connect + roster ingest (verified live on 3 real
+  leagues, 0 unresolved); Yahoo read-only OAuth connect + ingest (built, awaits a Yahoo app).
+- **Phase 2 — Decisions (no LLM) ✅** Multi-source projection consensus + FantasyCalc trade values;
+  start/sit optimizer, waiver ranking with FAAB bid sizing, and a trade analyzer — all live at
+  `/league/[id]`. 18 unit tests, cron refresh jobs.
+- **Phase 3 — Agent chat** (next): Claude tool-calling over the data (start/sit, waivers, trades).
+- **Phase 4 — Reddit/YouTube context.** · **Phase 5 — player props, X, podcasts, Yahoo verified.**
 
-See `NOTES.md` for the running dev log and `C:\Users\Alex\.claude\plans\i-have-several-fantasy-fuzzy-lightning.md`
-for the full plan.
+See `NOTES.md` for the running dev log + the detailed roadmap/next steps.
+
+## Quick commands
+
+```powershell
+npm run dev -- -p 3005                    # run the app (http://localhost:3005)
+npx tsx scripts/connect-sleeper.ts <user> # connect a Sleeper account
+npx tsx scripts/phase2-check.ts           # refresh projections/values + print start/sit
+npm run probe                             # credential-free data-source health check
+npm test                                  # unit tests
+```

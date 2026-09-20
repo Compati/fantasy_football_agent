@@ -1,5 +1,48 @@
 # Dev log
 
+## Roadmap & next steps
+
+**Done so far (Phases 0–2):** a working, advise-only decision tool. Connect Sleeper by username →
+your leagues/rosters import; the app shows an optimal start/sit (from a Sleeper+ESPN projection
+consensus), waiver targets with suggested FAAB bids, and a trade analyzer valued for each league's
+exact format. Verified live on 3 real leagues. Yahoo read-only OAuth is built but untested.
+
+**Immediate next — Phase 3: Claude chat agent**
+- Add `@anthropic-ai/sdk` tool-calling over the existing features so you can ask in plain English:
+  "Who do I flex this week?", "Best RB on waivers and what should I bid?", "Is Jefferson for CMC
+  fair?" — grounded in the real numbers (no hallucinated advice).
+- Tools wrap what already exists: `list_my_teams`, `get_roster`, `start_sit` (→ `startSitForTeam`),
+  `waiver_recommendations` (→ `waiverTargets`), `evaluate_trade` (→ `evaluateTrade`),
+  `get_trade_values`. Stream to a chat panel on `/league/[id]` via an `/api/chat` route.
+- Needs `ANTHROPIC_API_KEY` in `.env`.
+
+**Phase 4 — community context (Reddit + YouTube)**
+- `lib/reddit.ts` (free "script" app) pulls r/fantasyfootball injury/news/start-sit threads;
+  `lib/youtube.ts` (`youtube-caption-extractor`, no key) pulls transcripts from chosen channels.
+- Match items to rostered/waiver players → `NewsItem` rows → a `search_news` tool + news chips on
+  the start/sit and waiver cards.
+
+**Phase 5 — later**
+- Player betting props (The Odds API, reuse pickem's `lib/odds.ts` pattern) as a start/sit signal.
+- X/Twitter (metered) and podcast transcription (Whisper). Yahoo *write* actions stay out of scope
+  (advise-only).
+
+**Quality/coverage improvements worth doing (independent of phases)**
+- **Deeper trade values:** FantasyCalc returns ~196 players/format, thin for a 15-team SF league.
+  Add a second value source (KeepTradeCut / DynastyProcess) or fall back to projection-based value
+  so waiver/trade coverage isn't sparse.
+- **Opponent/matchup context:** ingest weekly matchups (`getMatchups`) and defense-vs-position so
+  start/sit can factor the actual opponent, not just projection.
+- **CBS + FantasyPros consensus:** add a 3rd projection source to strengthen the blend.
+- **Scoring dimension:** projections are ingested as full-PPR (all current leagues are PPR); add a
+  half/std dimension if a non-PPR league is ever added.
+- **Yahoo:** register a Yahoo app and verify `refreshYahooLeagues` extractors vs live JSON (the ppr
+  derivation from stat modifiers is a placeholder).
+- **Deploy:** move to Vercel + Neon (switch Prisma provider to `postgresql` + `directUrl`) so it's
+  usable from a phone during games; the Vercel crons in `vercel.json` then run automatically.
+- **Duplicate-name hardening:** the catalog has same-name players (two "Kenneth Walker"); the UI is
+  safe (keys off roster sleeperId) but the name+pos projection fallback could be tightened.
+
 ## 2026-09-19 — Phase 2 decision engine (DONE, verified on real leagues)
 
 **Built**
