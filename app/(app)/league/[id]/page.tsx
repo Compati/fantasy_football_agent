@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { startSitForTeam } from "@/lib/features/startsit";
 import { waiverTargets } from "@/lib/features/waivers";
 import { getMatchup } from "@/lib/features/matchup";
+import { getSurvival } from "@/lib/features/survival";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { TradeAnalyzer } from "./TradeAnalyzer";
 import { Recommendations } from "./Recommendations";
@@ -35,10 +36,11 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const [startSit, waivers, matchup] = await Promise.all([
+  const [startSit, waivers, matchup, survival] = await Promise.all([
     startSitForTeam(myTeam.id),
     waiverTargets(myTeam.id, { limit: 15 }),
     getMatchup(myTeam.id).catch(() => null),
+    getSurvival(myTeam.id).catch(() => null),
   ]);
 
   const cachedRec = await prisma.recommendation.findUnique({
@@ -114,6 +116,51 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
                 {matchup.opponent.actual > 0 ? ` · Live ${matchup.opponent.actual}` : ""}
               </div>
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* Guillotine survival (play-the-field leagues, no head-to-head) */}
+      {survival && (
+        <section className="rounded-xl border border-border bg-surface p-4 mb-5">
+          <div className="flex items-baseline justify-between mb-2">
+            <h2 className="font-medium">Survival — Week {survival.week}</h2>
+            {survival.survivalProb != null && (
+              <span
+                className={`text-sm font-semibold ${
+                  survival.survivalProb >= 0.85
+                    ? "text-good"
+                    : survival.survivalProb >= 0.6
+                      ? "text-warn"
+                      : "text-bad"
+                }`}
+              >
+                {Math.round(survival.survivalProb * 100)}% survive
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+            <span>
+              Projected <strong>{survival.myProjected}</strong>
+              {survival.myActual > 0 ? <span className="text-muted"> · Live {survival.myActual}</span> : null}
+            </span>
+            <span>
+              Rank{" "}
+              <strong className={survival.myRank >= survival.numActive ? "text-bad" : ""}>
+                {survival.myRank}
+              </strong>{" "}
+              <span className="text-muted">of {survival.numActive}</span>
+            </span>
+            <span
+              className={survival.cushion < 0 ? "text-bad" : survival.cushion < 12 ? "text-warn" : "text-muted"}
+            >
+              {survival.cushion >= 0
+                ? `+${survival.cushion} above the line`
+                : `${survival.cushion} — below the line`}
+            </span>
+            <span className="text-muted">
+              Elim line {survival.eliminationLine} ({survival.onTheBlock})
+            </span>
           </div>
         </section>
       )}

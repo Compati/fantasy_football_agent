@@ -1,11 +1,12 @@
 # Dev log
 
-## Current state — paused 2026-09-20 (tip commit e142cb5)
+## Current state — 2026-09-21 (survival view added; uncommitted)
 
 **Working & verified live on 3 real Sleeper leagues** (amiller180): rosters, **start/sit** (optimal
 lineup, injury-aware), **waivers + FAAB sizing**, **trade analyzer**, **injuries** (badges + alerts),
-**matchups** (proj vs live + win %, H2H leagues only). SQLite local; dev on port 3005
-(`npm run dev -- -p 3005`). 18 unit tests, tsc clean. Not deployed (local only).
+**matchups** (proj vs live + win %, H2H leagues only), **Guillotine survival** (rank / cushion /
+survive %, play-the-field leagues only). SQLite local; dev on port 3005
+(`npm run dev -- -p 3005`). 25 unit tests, tsc + lint clean. Not deployed (local only).
 
 **Built but not yet running:** the **AI advisor** (Phase 3) — one-click prioritized moves per league,
 model selectable (Sonnet 5 default / Opus 5 / Haiku 4.5). It only needs `ANTHROPIC_API_KEY` in `.env`
@@ -19,14 +20,39 @@ to run; everything else is wired and typechecked.
    JSON parses and the moves are sensible (dashboard digest then populates). Likely small follow-ups:
    prompt tuning, a "generate all leagues" button, token/cost estimate.
 2. **Key-free extensions:** Phase 4 **YouTube** news (no key) + Reddit later (free Reddit app);
-   **deeper trade values** (2nd source so deep-league players aren't blank); **Guillotine survival
-   view** (projected total vs elimination line for CS Guillotine); **deploy to Vercel + Neon** (phone
-   use — switch Prisma provider to postgres + directUrl).
+   **deeper trade values** (2nd source so deep-league players aren't blank); ~~Guillotine survival
+   view~~ **DONE 2026-09-21**; **deploy to Vercel + Neon** (phone use — switch Prisma provider to
+   postgres + directUrl).
 3. **Yahoo** — only if approved at sports.yahoo.com/developer/access (submit the existing Client ID).
 
 Handy scripts: `npm run probe` (source health), `scripts/connect-sleeper.ts <user>`,
 `scripts/phase2-check.ts` (refresh projections/values + print start/sit), `scripts/sync-players.ts`
 (refresh catalog incl. injuries).
+
+## 2026-09-21 — Guillotine survival view (DONE, verified live; key-free)
+
+Fills the gap the matchup banner leaves in play-the-field (Guillotine) leagues, where there's no
+head-to-head opponent so the matchup banner correctly hides.
+
+- `lib/features/survival.ts`:
+  - `getSurvival(teamId, week?)` (DB wrapper, Sleeper-only). **Guillotine detection** = fetch the
+    week's matchups; if no `matchup_id` pairs two rosters it's play-the-field → compute; if any
+    pairs (H2H) or there are no rows → return `null` (banner hides). Projects every active team's
+    total from its set starters via the same consensus blend matchup uses; eliminated teams (no set
+    starters → 0) drop out.
+  - `computeSurvival(week, teams)` (pure, unit-tested): ranks by projection, finds the elimination
+    line (lowest active proj = "on the block"), and a **cushion** = points above safety (margin over
+    the block if you're clear; negative deficit up to the second-lowest if *you're* on the block).
+  - `survivalProbability(myProj, others, σ=27)` = 1 − P(you post the strict low score), via numeric
+    integration ∫ f_me(x)·∏ P(Xⱼ>x) dx (per-team σ=27, i.e. matchup's combined 38/√2). Deterministic.
+- UI: survival banner on the league page (`app/(app)/league/[id]/page.tsx`) — Week, survive %,
+  projected/live, rank N of M, cushion above/below the line, elim line + who's on the block.
+- 7 new unit tests (`tests/survival.test.ts`); one caught a real modeling bug (cushion is 0, not
+  negative, when you're last unless you measure to the second-lowest — fixed).
+
+**Verified live (Week 2, real DB + Sleeper API):** CS Guillotine (15-team) → rank 4/15, proj 116.37,
+cushion +25.8 over elim line 90.57 (J0nnyBgood), 96% survive. Panini CS & Escalated Calls (H2H) →
+`null` (correctly not applicable). tsc + lint clean, 25 tests pass.
 
 ## 2026-09-20 — Injuries + matchups (DONE, verified live; key-free)
 
