@@ -1,6 +1,6 @@
 # Dev log
 
-## Current state — 2026-09-21 (survival view added; uncommitted)
+## Current state — 2026-09-21 (tip commit fb635cc)
 
 **Working & verified live on 3 real Sleeper leagues** (amiller180): rosters, **start/sit** (optimal
 lineup, injury-aware), **waivers + FAAB sizing**, **trade analyzer**, **injuries** (badges + alerts),
