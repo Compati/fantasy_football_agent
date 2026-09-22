@@ -3,7 +3,13 @@ import { Prisma } from "@prisma/client";
 import { getUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { buildLeagueContext } from "@/lib/agent/context";
-import { generateRecommendations, isAdvisorModel, DEFAULT_ADVISOR_MODEL } from "@/lib/agent/advisor";
+import {
+  generateRecommendations,
+  isAdvisorModel,
+  DEFAULT_ADVISOR_MODEL,
+  ADVISOR_MODELS,
+} from "@/lib/agent/advisor";
+import { traceStart, traceGather } from "@/lib/agent/trace";
 
 export const maxDuration = 60;
 
@@ -25,6 +31,8 @@ export async function POST(req: Request) {
 
   try {
     const context = await buildLeagueContext(teamId);
+    traceStart(context.league.name, context.team.name, context.league.week, ADVISOR_MODELS[model]);
+    traceGather(context);
     const result = await generateRecommendations(context, model);
     const moves = result.moves as unknown as Prisma.InputJsonValue;
     const rec = await prisma.recommendation.upsert({

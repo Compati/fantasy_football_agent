@@ -3,6 +3,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { LeagueContext } from "@/lib/agent/context";
+import { traceReason, traceDecide } from "@/lib/agent/trace";
 
 // Selectable advisor models (id -> display label). Sonnet 5 is the default:
 // strong quality at ~60% less than Opus. Opus 5 for the sharpest takes; Haiku
@@ -84,6 +85,7 @@ export async function generateRecommendations(
   }
   const client = new Anthropic();
   const thinking = thinkingFor(model);
+  const startedAt = Date.now();
   const response = await client.messages.create({
     model,
     max_tokens: 4000,
@@ -92,11 +94,26 @@ export async function generateRecommendations(
     messages: [{ role: "user", content: JSON.stringify(context) }],
   });
 
+  // The model's reasoning comes back as "thinking" blocks (when enabled). We
+  // don't store it, but we surface it to the terminal trace before dropping it.
+  const reasoning = response.content
+    .filter((b): b is Anthropic.ThinkingBlock => b.type === "thinking")
+    .map((b) => b.thinking)
+    .join("\n");
+  traceReason(reasoning);
+
   const text = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("\n")
     .trim();
   if (!text) throw new Error("Advisor returned an empty response.");
-  return extractJson(text);
+
+  const result = extractJson(text);
+  traceDecide(
+    result,
+    response.usage ? { input: response.usage.input_tokens, output: response.usage.output_tokens } : null,
+    Date.now() - startedAt,
+  );
+  return result;
 }

@@ -1,6 +1,6 @@
 # Dev log
 
-## Current state — 2026-09-21 (tip commit fb635cc)
+## Current state — 2026-09-22 (deeper trade values + advisor terminal trace)
 
 **Working & verified live on 3 real Sleeper leagues** (amiller180): rosters, **start/sit** (optimal
 lineup, injury-aware), **waivers + FAAB sizing**, **trade analyzer**, **injuries** (badges + alerts),
@@ -28,6 +28,40 @@ to run; everything else is wired and typechecked.
 Handy scripts: `npm run probe` (source health), `scripts/connect-sleeper.ts <user>`,
 `scripts/phase2-check.ts` (refresh projections/values + print start/sit), `scripts/sync-players.ts`
 (refresh catalog incl. injuries).
+
+## 2026-09-22 — Advisor terminal trace (for demos/teaching)
+
+Narrates the advisor agent's run to the **server console** (terminal running `npm run dev`) — nothing
+in the UI. `lib/agent/trace.ts` prints three labeled stages: ① GATHER (the grounded context — optimal
+lineup, injuries, waiver targets, FAAB — "all the model gets to see"), ② REASON (**the model's own
+thinking blocks**, which advisor.ts previously discarded — now captured from `response.content` where
+`type === "thinking"` and printed before dropping), ③ DECIDE (final prioritized moves + token usage +
+elapsed time). Wired: `traceStart`/`traceGather` in the recommendations route, `traceReason`/
+`traceDecide` in `generateRecommendations`. Toggle via `ADVISOR_TRACE` (1 force on / 0 off; on by
+default in dev). GATHER works with no API key; REASON/DECIDE need `ANTHROPIC_API_KEY` (the real Claude
+call). tsc + lint clean, 30 tests pass.
+
+## 2026-09-22 — Deeper trade values (projection-derived gap-fill; key-free)
+
+FantasyCalc only ranks ~199 players/format (confirmed: `limit` param doesn't lift it — those are the
+actively-traded players), so deep-league players (15-team SF) showed blank/zero value in waivers +
+trades. Added a **second value source: projection-derived estimates calibrated to FantasyCalc's own
+scale**, so every projected skill player gets a value.
+
+- `lib/values/calibrate.ts` (pure, unit-tested): `fitPowerLaw` = OLS of ln(value) on ln(proj) →
+  value ≈ a·projᵇ; `fitValueModels` fits **one curve per position** (positional scarcity falls out of
+  the market data — a 15-pt RB > 15-pt QB in 1QB) with a **global fallback** for thin positions;
+  `predictValue` floors at 1. Needs ≥4 spread points to fit a position, else falls back.
+- `lib/ingest/derived-values.ts` `refreshDerivedValues(ctx)`: calibrates on players that have BOTH a
+  FantasyCalc value and a current-week consensus projection, then **gap-fills** projected QB/RB/WR/TE
+  with no FantasyCalc row. Stored in the same `TradeValue` table as `source="derived"` (K/DEF left
+  blank — no market to calibrate). Migration `trade_value_source` adds `source` (default
+  "fantasycalc"); FantasyCalc ingest now tags/clears only its own rows, so the two sources coexist
+  under the existing `@@unique(sleeperId, format)`.
+- Wired: `refresh-trade-values` cron runs market then derived; `refreshTradeValuesForUser` too.
+- Readers surface it: waivers `valueEstimated`, trade `estimated` (vs truly `missing`). UI shows a
+  `~` prefix for estimates (waiver table + trade sides) and the trade warning distinguishes
+  "estimated → approximate" from "no value → floor". +5 calibrate tests (30 total).
 
 ## 2026-09-21 — Guillotine survival view (DONE, verified live; key-free)
 
