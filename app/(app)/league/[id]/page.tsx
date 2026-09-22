@@ -6,6 +6,7 @@ import { startSitForTeam } from "@/lib/features/startsit";
 import { waiverTargets } from "@/lib/features/waivers";
 import { getMatchup } from "@/lib/features/matchup";
 import { getSurvival } from "@/lib/features/survival";
+import { rosterOutlook } from "@/lib/features/roster";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { TradeAnalyzer } from "./TradeAnalyzer";
 import { Recommendations } from "./Recommendations";
@@ -15,6 +16,13 @@ export const dynamic = "force-dynamic";
 // Compact slot labels so long ones (SUPER_FLEX) don't overflow.
 const SLOT_LABELS: Record<string, string> = { SUPER_FLEX: "SFLX", IDP_FLEX: "IDP" };
 const slotLabel = (s: string) => SLOT_LABELS[s] ?? s;
+
+// ["RB","RB","WR"] -> "2 RB, 1 WR"
+function slotCounts(slots: string[]): string {
+  const counts = new Map<string, number>();
+  for (const s of slots) counts.set(s, (counts.get(s) ?? 0) + 1);
+  return [...counts.entries()].map(([s, n]) => `${n} ${slotLabel(s)}`).join(", ");
+}
 
 export default async function LeaguePage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -36,11 +44,12 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const [startSit, waivers, matchup, survival] = await Promise.all([
+  const [startSit, waivers, matchup, survival, outlook] = await Promise.all([
     startSitForTeam(myTeam.id),
     waiverTargets(myTeam.id, { limit: 15 }),
     getMatchup(myTeam.id).catch(() => null),
     getSurvival(myTeam.id).catch(() => null),
+    rosterOutlook(myTeam.id).catch(() => null),
   ]);
 
   const cachedRec = await prisma.recommendation.findUnique({
@@ -302,6 +311,44 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
           A <span className="font-mono">~</span> value is a projection-derived estimate (outside FantasyCalc&apos;s set).
         </p>
       </section>
+
+      {/* Roster outlook: upcoming byes + thin positions */}
+      {outlook && (outlook.byes.length > 0 || outlook.thinPositions.length > 0) && (
+        <section className="rounded-xl border border-border bg-surface p-4 mb-5">
+          <h2 className="font-medium mb-3">Roster outlook</h2>
+
+          {outlook.nextByeCrunch && (
+            <div className="mb-3 rounded-lg border border-warn/40 bg-warn/5 p-2 text-sm text-warn">
+              ⚠ Week {outlook.nextByeCrunch.week} bye crunch: no one to fill{" "}
+              {slotCounts(outlook.nextByeCrunch.unfilledSlots)} — plan a pickup before then.
+            </div>
+          )}
+
+          {outlook.thinPositions.length > 0 && (
+            <p className="mb-3 text-sm">
+              <span className="text-muted">Thin (no bench behind your starters): </span>
+              {outlook.thinPositions.map((t) => `${t.position} (${t.have}/${t.dedicatedStarters})`).join(" · ")}
+            </p>
+          )}
+
+          {outlook.byes.length > 0 && (
+            <div className="text-sm">
+              <div className="text-xs text-muted uppercase mb-1">Upcoming byes</div>
+              {outlook.byes.slice(0, 6).map((b) => (
+                <div key={b.week} className="flex gap-2 py-0.5">
+                  <span className="w-14 shrink-0 text-muted">Wk {b.week}</span>
+                  <span className="flex-1">
+                    {b.playersOnBye.map((p) => `${p.name} (${p.position})`).join(", ")}
+                    {b.unfilledSlots.length > 0 && (
+                      <span className="text-warn"> — {slotCounts(b.unfilledSlots)} unfilled</span>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Trade analyzer */}
       <TradeAnalyzer leagueId={league.id} myRoster={myRoster} otherPlayers={otherPlayers} />

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { startSitForTeam } from "@/lib/features/startsit";
 import { waiverTargets } from "@/lib/features/waivers";
 import { getSurvival } from "@/lib/features/survival";
+import { rosterOutlook } from "@/lib/features/roster";
 
 export interface LeagueContext {
   league: {
@@ -39,6 +40,11 @@ export interface LeagueContext {
     survivalProb: number | null;
   };
   bench: { player: string; position: string; proj: number }[];
+  outlook: {
+    thinPositions: { position: string; have: number; dedicatedStarters: number }[];
+    upcomingByes: { week: number; players: string[]; unfilledSlots: string[] }[];
+    nextByeCrunchWeek: number | null; // soonest week a bye leaves a slot unfilled
+  };
   waiverTargets: {
     player: string;
     position: string;
@@ -56,10 +62,11 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
     where: { id: teamId },
     include: { league: true, roster: true },
   });
-  const [ss, wv, survival] = await Promise.all([
+  const [ss, wv, survival, outlook] = await Promise.all([
     startSitForTeam(teamId),
     waiverTargets(teamId, { limit: 12 }),
     getSurvival(teamId).catch(() => null),
+    rosterOutlook(teamId).catch(() => null),
   ]);
 
   const fmt = team.league.ppr === 1 ? "PPR" : team.league.ppr === 0.5 ? "Half-PPR" : "Standard";
@@ -113,6 +120,15 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
           },
         }
       : {}),
+    outlook: {
+      thinPositions: outlook?.thinPositions ?? [],
+      upcomingByes: (outlook?.byes ?? []).slice(0, 4).map((b) => ({
+        week: b.week,
+        players: b.playersOnBye.map((p) => `${p.name} (${p.position})`),
+        unfilledSlots: b.unfilledSlots,
+      })),
+      nextByeCrunchWeek: outlook?.nextByeCrunch?.week ?? null,
+    },
     bench: bench.filter((b) => !ss.lineup.some((a) => a.player?.name === b.player)),
     waiverTargets: wv.targets.map((t) => ({
       player: t.name,

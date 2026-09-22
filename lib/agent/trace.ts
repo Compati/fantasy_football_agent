@@ -59,6 +59,11 @@ export function traceGather(ctx: LeagueContext) {
         (s.survivalProb != null ? `, ${Math.round(s.survivalProb * 100)}% survive` : ""),
     );
   }
+  if (ctx.outlook.thinPositions.length || ctx.outlook.nextByeCrunchWeek != null) {
+    const thin = ctx.outlook.thinPositions.map((t) => t.position).join("/") || "none";
+    const crunch = ctx.outlook.nextByeCrunchWeek != null ? `week ${ctx.outlook.nextByeCrunchWeek}` : "none";
+    log(`   • Outlook: thin at ${thin}; next bye crunch ${crunch}`);
+  }
   log(
     `   • FAAB remaining: ${ctx.league.faabRemaining != null ? "$" + ctx.league.faabRemaining : "n/a"} · ` +
       `sources: ${ctx.dataAvailable.join(", ")}`,

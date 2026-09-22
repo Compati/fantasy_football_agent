@@ -91,6 +91,33 @@ export function getNflState(): Promise<SleeperState> {
   return getJson<SleeperState>(`${API}/state/nfl`);
 }
 
+// ---- Schedule / byes -------------------------------------------------------
+
+// Regular-season schedule: one row per game. A team's bye week is the week it
+// appears in no game. Lives on the api.sleeper.com host (not the /v1 API).
+export interface SleeperGame {
+  week: number;
+  home: string;
+  away: string;
+  status: string;
+}
+
+// The schedule is fixed for a season, so memoize it per season for the process.
+const scheduleCache = new Map<number, Promise<SleeperGame[]>>();
+
+export function getSchedule(season: number): Promise<SleeperGame[]> {
+  const cached = scheduleCache.get(season);
+  if (cached) return cached;
+  const p = getJson<SleeperGame[]>(`https://api.sleeper.com/schedule/nfl/regular/${season}`).catch(
+    (e) => {
+      scheduleCache.delete(season); // don't cache a failure
+      throw e;
+    },
+  );
+  scheduleCache.set(season, p);
+  return p;
+}
+
 // ---- Player catalog -------------------------------------------------------
 
 // The full catalog is ~5MB. It carries cross-ids (espn_id, yahoo_id) which make

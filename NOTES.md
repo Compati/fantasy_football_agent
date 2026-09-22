@@ -1,12 +1,13 @@
 # Dev log
 
-## Current state — 2026-09-22 (injury-aware waivers/values + Guillotine survival polish; uncommitted)
+## Current state — 2026-09-22 (roster outlook: byes + thin positions; uncommitted)
 
 **Working & verified live on 3 real Sleeper leagues** (amiller180): rosters, **start/sit** (optimal
 lineup, injury-aware), **waivers + FAAB sizing** (injury-aware), **trade analyzer**, **injuries**
 (badges + alerts), **matchups** (proj vs live + win %, H2H leagues only), **Guillotine survival**
-(rank / cushion / survive % + full standings strip; also fed to the advisor). SQLite local; dev on
-port 3005 (`npm run dev -- -p 3005`). 32 unit tests, tsc + lint clean. Not deployed (local only).
+(rank / cushion / survive % + full standings strip; also fed to the advisor), **roster outlook**
+(upcoming bye crunches + thin positions; also fed to the advisor). SQLite local; dev on port 3005
+(`npm run dev -- -p 3005`). 36 unit tests, tsc + lint clean. Not deployed (local only).
 
 **Built but not yet running:** the **AI advisor** (Phase 3) — one-click prioritized moves per league,
 model selectable (Sonnet 5 default / Opus 5 / Haiku 4.5). It only needs `ANTHROPIC_API_KEY` in `.env`
@@ -28,6 +29,24 @@ to run; everything else is wired and typechecked.
 Handy scripts: `npm run probe` (source health), `scripts/connect-sleeper.ts <user>`,
 `scripts/phase2-check.ts` (refresh projections/values + print start/sit), `scripts/sync-players.ts`
 (refresh catalog incl. injuries).
+
+## 2026-09-22 — Roster outlook: bye-week crunches + thin positions (key-free)
+
+Forward-looking roster construction: which upcoming week leaves a starting slot unfilled (byes), and
+where the roster is thin right now.
+- Bye source: new `getSchedule(season)` in `lib/sleeper.ts` (api.sleeper.com/schedule/nfl/regular/
+  {season}, memoized per season). A team's bye = the week it plays no game.
+- `lib/features/roster.ts` (pure cores unit-tested): `byeWeekByTeam(games)`; `computeByeOutlook`
+  (future weeks with a rostered player on bye + which starting slots can't be filled — reuses the real
+  `optimizeLineup` with equal projections purely for fillability); `computeThinPositions` (a base
+  position with rostered count ≤ its *dedicated* starting slots, i.e. no bench behind the starters;
+  FLEX/SUPER_FLEX don't inflate any single position's need). `rosterOutlook(teamId)` wraps it (skips IR
+  players). +4 tests (36 total).
+- Surfaced: "Roster outlook" section on the league page (next bye crunch warning, thin positions,
+  upcoming byes with unfilled slots); fed into advisor context (`outlook`) + a prompt rule (shore up
+  thin spots / name the bye-crunch week); prints in the trace GATHER stage.
+- Verified live: CS Guillotine (deep) → no crunch, correctly groups DET's wk6 bye (Goff/Jefferson/
+  Hockenson); Panini CS → thin QB/TE, wk5 DEF crunch; Escalated Calls → thin QB/TE, wk7 TE crunch.
 
 ## 2026-09-22 — Injury-aware waivers/values + survival fed to the advisor (key-free)
 
