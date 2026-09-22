@@ -43,7 +43,8 @@ export interface TradeSidePlayer {
   name: string;
   position: string;
   value: number;
-  missing: boolean; // no market value found for the league format
+  missing: boolean; // no value at all (not even a projection-derived estimate)
+  estimated: boolean; // value is a projection-derived estimate, not live market
 }
 
 export interface TradeEvaluation extends TradeVerdict {
@@ -73,18 +74,19 @@ export async function evaluateTrade(
     }),
   ]);
   const nameById = new Map(players.map((p) => [p.sleeperId, p]));
-  const valueById = new Map(values.map((v) => [v.sleeperId, v.value]));
+  const valueById = new Map(values.map((v) => [v.sleeperId, v]));
 
   const side = (ids: string[]): TradeSidePlayer[] =>
     ids.map((id) => {
       const p = nameById.get(id);
-      const value = valueById.get(id) ?? 0;
+      const v = valueById.get(id);
       return {
         sleeperId: id,
         name: p?.name ?? id,
         position: p?.position ?? "?",
-        value,
-        missing: !valueById.has(id),
+        value: v?.value ?? 0,
+        missing: !v,
+        estimated: v?.source === "derived",
       };
     });
 
@@ -92,13 +94,24 @@ export async function evaluateTrade(
   const get = side(getIds);
   const verdict = scoreTrade(give.map((p) => p.value), get.map((p) => p.value));
 
-  // FantasyCalc only ranks the top ~196 players per format, so deep-league
-  // players can lack a value. Flag that rather than scoring them as 0.
-  const missing = [...give, ...get].filter((p) => p.missing).map((p) => p.name);
-  const warning =
-    missing.length > 0
-      ? `No market value for ${missing.join(", ")} (outside FantasyCalc's ranked set) — verdict counts them as 0, so treat it as a floor.`
-      : null;
+  // Deep-league players outside FantasyCalc's ~200-ranked set now carry a
+  // projection-derived estimate; only players with no projection at all (e.g.
+  // K/DEF) still count as 0. Flag both so the verdict's confidence is clear.
+  const all = [...give, ...get];
+  const missing = all.filter((p) => p.missing).map((p) => p.name);
+  const estimated = all.filter((p) => p.estimated).map((p) => p.name);
+  const parts: string[] = [];
+  if (estimated.length > 0) {
+    parts.push(
+      `Estimated (projection-derived) value for ${estimated.join(", ")} — no live trade market, so treat the margin as approximate.`,
+    );
+  }
+  if (missing.length > 0) {
+    parts.push(
+      `No value at all for ${missing.join(", ")} — verdict counts them as 0, so treat it as a floor.`,
+    );
+  }
+  const warning = parts.length > 0 ? parts.join(" ") : null;
 
   return { ...verdict, give, get, warning };
 }

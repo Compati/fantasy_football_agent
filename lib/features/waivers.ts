@@ -54,7 +54,8 @@ export interface WaiverTarget {
   nflTeam: string | null;
   proj: number;
   sources: number;
-  value: number; // FantasyCalc market value (0 if unknown)
+  value: number; // trade value (0 if unknown)
+  valueEstimated: boolean; // true = projection-derived estimate, not live market
   trend30: number;
   faab: FaabSuggestion;
 }
@@ -113,6 +114,7 @@ export async function waiverTargets(
         proj: c.points,
         sources: c.n,
         value: v?.value ?? 0,
+        valueEstimated: v?.source === "derived",
         trend30,
         faab: faabSuggestion(c.points, trend30, remainingBudget),
       };

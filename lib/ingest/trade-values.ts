@@ -4,6 +4,7 @@
 import { prisma } from "@/lib/db";
 import { getTradeValues } from "@/lib/fantasycalc";
 import { ensureCatalogFresh } from "@/lib/players";
+import { refreshDerivedValues } from "@/lib/ingest/derived-values";
 import type { ScoringContext } from "@/lib/types";
 
 export async function refreshTradeValues(
@@ -19,8 +20,10 @@ export async function refreshTradeValues(
     (r) => r.sleeperId && validIds.has(r.sleeperId),
   );
 
+  // Only clear the live-market rows; projection-derived gap-fill rows (source
+  // "derived") are managed separately by refreshDerivedValues.
   await prisma.tradeValue.deleteMany({
-    where: { isDynasty, ppr: ctx.ppr, numQbs: ctx.numQbs, numTeams: ctx.numTeams },
+    where: { source: "fantasycalc", isDynasty, ppr: ctx.ppr, numQbs: ctx.numQbs, numTeams: ctx.numTeams },
   });
   if (rows.length > 0) {
     await prisma.tradeValue.createMany({
@@ -36,6 +39,7 @@ export async function refreshTradeValues(
         positionRank: r.positionRank,
         trend30: r.trend30Day,
         tier: r.tier,
+        source: "fantasycalc",
       })),
     });
   }
@@ -54,7 +58,9 @@ export async function refreshTradeValuesForUser(userId: string): Promise<number>
     const key = `${l.ppr}|${l.numQbs}|${l.numTeams}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    total += await refreshTradeValues({ ppr: l.ppr, numQbs: l.numQbs, numTeams: l.numTeams });
+    const ctx = { ppr: l.ppr, numQbs: l.numQbs, numTeams: l.numTeams };
+    total += await refreshTradeValues(ctx);
+    await refreshDerivedValues(ctx); // gap-fill projection-derived estimates
   }
   return total;
 }

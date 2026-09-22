@@ -121,7 +121,14 @@ function TradeSide({
   players,
 }: {
   label: string;
-  players: { sleeperId: string; name: string; position: string; value: number; missing: boolean }[];
+  players: {
+    sleeperId: string;
+    name: string;
+    position: string;
+    value: number;
+    missing: boolean;
+    estimated: boolean;
+  }[];
 }) {
   return (
     <div>
@@ -132,7 +139,9 @@ function TradeSide({
             <span>
               {p.name} <span className="text-muted">{p.position}</span>
             </span>
-            <span className={p.missing ? "text-warn" : "text-muted"}>{p.missing ? "no value" : p.value}</span>
+            <span className={p.missing ? "text-warn" : "text-muted"}>
+              {p.missing ? "no value" : p.estimated ? `~${p.value}` : p.value}
+            </span>
           </li>
         ))}
       </ul>

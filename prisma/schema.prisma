@@ -170,6 +170,11 @@ model TradeValue {
   trend30      Int
   tier         Int?
 
+  // "fantasycalc" = live trade-market value; "derived" = projection-based
+  // estimate (calibrated to the market scale) for players outside FantasyCalc's
+  // ranked set, so deep-league players still get a value.
+  source String @default("fantasycalc")
+
   updatedAt DateTime @updatedAt
 
   @@unique([sleeperId, isDynasty, ppr, numQbs, numTeams])

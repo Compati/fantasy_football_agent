@@ -256,7 +256,9 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
                   </td>
                   <td className="py-1 pr-2 text-muted">{t.position}</td>
                   <td className="py-1 pr-2 text-right">{t.proj}</td>
-                  <td className="py-1 pr-2 text-right text-muted">{t.value || "—"}</td>
+                  <td className="py-1 pr-2 text-right text-muted">
+                    {t.value ? (t.valueEstimated ? `~${t.value}` : t.value) : "—"}
+                  </td>
                   <td
                     className={`py-1 pr-2 text-right ${t.trend30 > 0 ? "text-good" : t.trend30 < 0 ? "text-bad" : "text-muted"}`}
                   >
@@ -272,6 +274,7 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
         </div>
         <p className="mt-2 text-xs text-muted">
           FAAB suggested as a % of your remaining budget, sized by projection and market trend.
+          A <span className="font-mono">~</span> value is a projection-derived estimate (outside FantasyCalc&apos;s set).
         </p>
       </section>
 
