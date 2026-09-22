@@ -4,6 +4,7 @@
 import { prisma } from "@/lib/db";
 import { getNflState } from "@/lib/sleeper";
 import { blendProjections } from "@/lib/projections/consensus";
+import { injuryAdjustedProj } from "@/lib/features/injury";
 import type { ProjectionRow } from "@/lib/types";
 
 const STARTABLE = new Set(["QB", "RB", "WR", "TE", "K", "DEF"]);
@@ -52,11 +53,12 @@ export interface WaiverTarget {
   name: string;
   position: string;
   nflTeam: string | null;
-  proj: number;
+  proj: number; // injury-adjusted: 0 if the player is ruled out this week
   sources: number;
   value: number; // trade value (0 if unknown)
   valueEstimated: boolean; // true = projection-derived estimate, not live market
   trend30: number;
+  injuryStatus: string | null;
   faab: FaabSuggestion;
 }
 
@@ -106,17 +108,21 @@ export async function waiverTargets(
       const c = consensus.get(p.sleeperId)!;
       const v = valueById.get(p.sleeperId);
       const trend30 = v?.trend30 ?? 0;
+      // A ruled-out player can't help this week, so gate their projection to 0
+      // (matches start/sit) — they sink out of the ranked targets.
+      const proj = injuryAdjustedProj(c.points, p.injuryStatus);
       return {
         sleeperId: p.sleeperId,
         name: p.name,
         position: p.position,
         nflTeam: p.nflTeam,
-        proj: c.points,
+        proj,
         sources: c.n,
         value: v?.value ?? 0,
         valueEstimated: v?.source === "derived",
         trend30,
-        faab: faabSuggestion(c.points, trend30, remainingBudget),
+        injuryStatus: p.injuryStatus,
+        faab: faabSuggestion(proj, trend30, remainingBudget),
       };
     })
     .sort((a, b) => b.proj - a.proj || b.value - a.value)

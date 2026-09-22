@@ -53,6 +53,7 @@ Your job: produce a PRIORITIZED list of concrete moves the manager should make t
   1. start_sit — lineup changes implied by the optimal lineup vs. what's set, and genuine close calls worth flagging.
   2. waiver — the best available adds; name the player, the suggested FAAB bid provided, and which bench player to drop (pick the lowest-projected bench player at a surplus position).
   3. trade — only if the roster clearly has a positional surplus and a need, suggest the archetype of trade to pursue (e.g. "trade WR depth for a starting RB"); keep it directional and grounded in market values. Skip if nothing stands out.
+- If a "survival" section is present this is a GUILLOTINE (play-the-field) league: there is NO head-to-head opponent, and the single lowest weekly total is eliminated. Optimize purely to maximize this week's projected total — every start/sit point matters more than usual, and upside plays are worth more when your cushion is thin. Reference the cushion above the elimination line and the survival probability, and raise urgency (and confidence on lineup fixes) when the cushion is small or negative. Do NOT talk about beating a specific opponent.
 - If the lineup is already optimal and there are no strong adds, say so plainly with a single "hold" move — do not manufacture busywork.
 - Be specific and concise: name players, cite projections and FAAB dollars, one or two sentences per move.
 - Order moves by real impact (biggest point/roster improvement first). Assign priority 1..N.

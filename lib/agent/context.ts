@@ -5,6 +5,7 @@
 import { prisma } from "@/lib/db";
 import { startSitForTeam } from "@/lib/features/startsit";
 import { waiverTargets } from "@/lib/features/waivers";
+import { getSurvival } from "@/lib/features/survival";
 
 export interface LeagueContext {
   league: {
@@ -25,6 +26,18 @@ export interface LeagueContext {
     closeCalls: { starter: string; alternative: string; gap: number }[];
   };
   injuries: { player: string; status: string; starting: boolean }[];
+  // Present only for Guillotine (play-the-field) leagues — no head-to-head; the
+  // single lowest weekly total is eliminated.
+  survival?: {
+    format: "guillotine";
+    numActive: number;
+    myProjected: number;
+    myRank: number; // 1 = safest
+    eliminationLine: number;
+    cushion: number; // points above safety (negative = you're on the block)
+    onTheBlock: string;
+    survivalProb: number | null;
+  };
   bench: { player: string; position: string; proj: number }[];
   waiverTargets: {
     player: string;
@@ -32,6 +45,7 @@ export interface LeagueContext {
     proj: number;
     marketValue: number;
     trend: number;
+    injuryStatus: string | null;
     suggestedFaab: string;
   }[];
   dataAvailable: string[];
@@ -42,7 +56,11 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
     where: { id: teamId },
     include: { league: true, roster: true },
   });
-  const [ss, wv] = await Promise.all([startSitForTeam(teamId), waiverTargets(teamId, { limit: 12 })]);
+  const [ss, wv, survival] = await Promise.all([
+    startSitForTeam(teamId),
+    waiverTargets(teamId, { limit: 12 }),
+    getSurvival(teamId).catch(() => null),
+  ]);
 
   const fmt = team.league.ppr === 1 ? "PPR" : team.league.ppr === 0.5 ? "Half-PPR" : "Standard";
   const sf = team.league.numQbs === 2 ? " Superflex" : "";
@@ -81,6 +99,20 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       closeCalls: ss.closeCalls.slice(0, 5).map((c) => ({ starter: c.starter.name, alternative: c.alternative.name, gap: c.gap })),
     },
     injuries: ss.injuryAlerts,
+    ...(survival
+      ? {
+          survival: {
+            format: "guillotine" as const,
+            numActive: survival.numActive,
+            myProjected: survival.myProjected,
+            myRank: survival.myRank,
+            eliminationLine: survival.eliminationLine,
+            cushion: survival.cushion,
+            onTheBlock: survival.onTheBlock,
+            survivalProb: survival.survivalProb,
+          },
+        }
+      : {}),
     bench: bench.filter((b) => !ss.lineup.some((a) => a.player?.name === b.player)),
     waiverTargets: wv.targets.map((t) => ({
       player: t.name,
@@ -88,6 +120,7 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       proj: t.proj,
       marketValue: t.value,
       trend: t.trend30,
+      injuryStatus: t.injuryStatus,
       suggestedFaab: t.faab.dollars != null ? `$${t.faab.dollars}` : `${t.faab.pct}%`,
     })),
     dataAvailable: [

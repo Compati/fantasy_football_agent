@@ -51,6 +51,14 @@ export function traceGather(ctx: LeagueContext) {
   log(`   • ${ctx.waiverTargets.length} waiver targets` + (ctx.waiverTargets[0]
     ? ` (top: ${ctx.waiverTargets[0].player}, ${ctx.waiverTargets[0].proj} proj, ${ctx.waiverTargets[0].suggestedFaab})`
     : ""));
+  if (ctx.survival) {
+    const s = ctx.survival;
+    log(
+      `   • Guillotine survival: rank ${s.myRank}/${s.numActive}, ` +
+        `${s.cushion >= 0 ? "+" + s.cushion : s.cushion} vs elim line ${s.eliminationLine} (${s.onTheBlock})` +
+        (s.survivalProb != null ? `, ${Math.round(s.survivalProb * 100)}% survive` : ""),
+    );
+  }
   log(
     `   • FAAB remaining: ${ctx.league.faabRemaining != null ? "$" + ctx.league.faabRemaining : "n/a"} · ` +
       `sources: ${ctx.dataAvailable.join(", ")}`,

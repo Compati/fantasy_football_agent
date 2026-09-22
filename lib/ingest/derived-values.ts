@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { getNflState } from "@/lib/sleeper";
 import { blendProjections } from "@/lib/projections/consensus";
 import { fitValueModels, modelFor, predictValue, type CalibrationPoint } from "@/lib/values/calibrate";
+import { isUnavailable } from "@/lib/features/injury";
 import type { ProjectionRow, ScoringContext } from "@/lib/types";
 
 // Positions FantasyCalc actually values (skill positions). K/DEF have no market
@@ -35,29 +36,33 @@ export async function refreshDerivedValues(ctx: ScoringContext, week?: number): 
   });
   const fcById = new Map(fcRows.map((r) => [r.sleeperId, r]));
 
-  // Positions for every projected player (one query).
+  // Positions + injury status for every projected player (one query).
   const projIds = [...consensus.keys()];
   const players = await prisma.player.findMany({
     where: { sleeperId: { in: projIds } },
-    select: { sleeperId: true, position: true },
+    select: { sleeperId: true, position: true, injuryStatus: true },
   });
   const posById = new Map(players.map((p) => [p.sleeperId, p.position]));
+  const statusById = new Map(players.map((p) => [p.sleeperId, p.injuryStatus]));
 
   // Calibration set: players with BOTH a FantasyCalc value and a projection.
+  // Skip ruled-out players — their weekly projection is unreliable, so they'd
+  // distort the fit.
   const calibration: CalibrationPoint[] = [];
   for (const r of fcRows) {
     const c = consensus.get(r.sleeperId);
     const pos = posById.get(r.sleeperId);
-    if (c && pos && VALUED_POSITIONS.has(pos)) {
+    if (c && pos && VALUED_POSITIONS.has(pos) && !isUnavailable(statusById.get(r.sleeperId))) {
       calibration.push({ position: pos, proj: c.points, value: r.value });
     }
   }
   const models = fitValueModels(calibration);
   if (!models.global && models.byPosition.size === 0) return 0; // can't calibrate
 
-  // Gap-fill: projected, valued-position players with no FantasyCalc row.
+  // Gap-fill: projected, valued-position players with no FantasyCalc row. Don't
+  // invent a value for a ruled-out player from a projection we'd otherwise zero.
   const derived = projIds
-    .filter((id) => !fcById.has(id))
+    .filter((id) => !fcById.has(id) && !isUnavailable(statusById.get(id)))
     .map((id) => ({ id, pos: posById.get(id), proj: consensus.get(id)!.points }))
     .filter((x): x is { id: string; pos: string; proj: number } => !!x.pos && VALUED_POSITIONS.has(x.pos))
     .map((x) => {

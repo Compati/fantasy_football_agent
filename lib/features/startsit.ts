@@ -7,12 +7,9 @@ import { getNflState } from "@/lib/sleeper";
 import { blendProjections } from "@/lib/projections/consensus";
 import { starterSlots } from "@/lib/ingest/sleeper-transform";
 import { isEligible, slotRestrictiveness } from "@/lib/features/eligibility";
+import { UNAVAILABLE_STATUS } from "@/lib/features/injury";
 import { playerDetailMap } from "@/lib/players";
 import type { ProjectionRow } from "@/lib/types";
-
-// Designations that mean the player won't play — the optimizer must not start
-// them. Questionable is a flag only (still projectable).
-export const UNAVAILABLE_STATUS = new Set(["Out", "Doubtful", "IR", "PUP", "Sus", "NA", "DNR", "COV"]);
 
 export interface LineupPlayer {
   sleeperId: string;

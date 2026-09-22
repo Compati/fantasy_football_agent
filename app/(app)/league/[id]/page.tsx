@@ -162,6 +162,30 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
               Elim line {survival.eliminationLine} ({survival.onTheBlock})
             </span>
           </div>
+
+          {/* Full field, safest → most at risk */}
+          <ol className="mt-3 space-y-0.5 text-sm">
+            {survival.standings.map((t, i) => {
+              const onBlock = i === survival.standings.length - 1;
+              return (
+                <li
+                  key={`${t.teamName}-${i}`}
+                  className={`flex items-center gap-2 rounded px-1.5 py-0.5 ${
+                    t.isMine ? "bg-accent/10 font-medium" : ""
+                  } ${onBlock ? "text-bad" : ""}`}
+                >
+                  <span className="w-5 shrink-0 text-xs text-muted tabular-nums">{i + 1}</span>
+                  <span className="flex-1 truncate">
+                    {t.teamName}
+                    {t.isMine ? " (you)" : ""}
+                    {onBlock ? " — on the block" : ""}
+                  </span>
+                  <span className="tabular-nums">{t.projected}</span>
+                  {t.actual > 0 && <span className="text-xs text-muted tabular-nums">· {t.actual} live</span>}
+                </li>
+              );
+            })}
+          </ol>
         </section>
       )}
 
@@ -252,6 +276,7 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
                 <tr key={t.sleeperId} className="border-t border-border">
                   <td className="py-1 pr-2">
                     {t.name}
+                    {t.injuryStatus && <InjuryBadge status={t.injuryStatus} />}
                     {t.nflTeam ? <span className="text-muted"> · {t.nflTeam}</span> : ""}
                   </td>
                   <td className="py-1 pr-2 text-muted">{t.position}</td>

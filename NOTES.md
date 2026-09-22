@@ -1,12 +1,12 @@
 # Dev log
 
-## Current state — 2026-09-22 (deeper trade values + advisor terminal trace)
+## Current state — 2026-09-22 (injury-aware waivers/values + Guillotine survival polish; uncommitted)
 
 **Working & verified live on 3 real Sleeper leagues** (amiller180): rosters, **start/sit** (optimal
-lineup, injury-aware), **waivers + FAAB sizing**, **trade analyzer**, **injuries** (badges + alerts),
-**matchups** (proj vs live + win %, H2H leagues only), **Guillotine survival** (rank / cushion /
-survive %, play-the-field leagues only). SQLite local; dev on port 3005
-(`npm run dev -- -p 3005`). 25 unit tests, tsc + lint clean. Not deployed (local only).
+lineup, injury-aware), **waivers + FAAB sizing** (injury-aware), **trade analyzer**, **injuries**
+(badges + alerts), **matchups** (proj vs live + win %, H2H leagues only), **Guillotine survival**
+(rank / cushion / survive % + full standings strip; also fed to the advisor). SQLite local; dev on
+port 3005 (`npm run dev -- -p 3005`). 32 unit tests, tsc + lint clean. Not deployed (local only).
 
 **Built but not yet running:** the **AI advisor** (Phase 3) — one-click prioritized moves per league,
 model selectable (Sonnet 5 default / Opus 5 / Haiku 4.5). It only needs `ANTHROPIC_API_KEY` in `.env`
@@ -28,6 +28,28 @@ to run; everything else is wired and typechecked.
 Handy scripts: `npm run probe` (source health), `scripts/connect-sleeper.ts <user>`,
 `scripts/phase2-check.ts` (refresh projections/values + print start/sit), `scripts/sync-players.ts`
 (refresh catalog incl. injuries).
+
+## 2026-09-22 — Injury-aware waivers/values + survival fed to the advisor (key-free)
+
+**#1 Injury gate shared across features.** New `lib/features/injury.ts` (`UNAVAILABLE_STATUS`,
+`isUnavailable`, `injuryAdjustedProj`) — start/sit now imports it instead of defining the set locally.
+Waivers gate a ruled-out player's projection to 0 (they sink out of the ranked targets, matching
+start/sit) and expose `injuryStatus` (badged in the waiver table; Questionable stays visible).
+Derived values skip UNAVAILABLE players in both calibration and gap-fill, so we don't invent a value
+for a ruled-out player from a projection we'd otherwise zero. Advisor context waiver targets carry
+`injuryStatus` too. +2 tests (32 total).
+  - **Finding:** the earlier "Watson as top waiver/derived value" was a *red herring* — Sleeper reports
+    `injuryStatus = null` for him even after a fresh `sync-players` (884 injured now), and he has a real
+    13.13 projection, so he's genuinely an un-rostered projectable QB, correctly NOT gated. Live check:
+    **zero** ruled-out free agents in the CS Guillotine pool carry a nonzero projection — the projection
+    sources already suppress Out players — so the gate is mainly a consistency *safeguard* + the badge.
+
+**#2 Guillotine survival polish.** `buildLeagueContext` now includes a `survival` block for
+play-the-field leagues (rank, cushion, elim line, on-the-block, survivalProb), and the advisor system
+prompt has a Guillotine rule: no H2H opponent, maximize this week's total, raise urgency as the
+cushion shrinks. Survival also prints in the trace GATHER stage. League page renders a **full
+standings strip** under the survival banner (all 15 teams, safest→on-the-block, you highlighted).
+Verified live: `context.survival` = rank 4/15, +25.8 cushion, elim 90.57 (J0nnyBgood), 95.7% survive.
 
 ## 2026-09-22 — Advisor terminal trace (for demos/teaching)
 
