@@ -7,6 +7,7 @@ import { waiverTargets } from "@/lib/features/waivers";
 import { getMatchup } from "@/lib/features/matchup";
 import { getSurvival } from "@/lib/features/survival";
 import { rosterOutlook } from "@/lib/features/roster";
+import { newsForPlayers } from "@/lib/features/news";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { TradeAnalyzer } from "./TradeAnalyzer";
 import { Recommendations } from "./Recommendations";
@@ -51,6 +52,14 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
     getSurvival(myTeam.id).catch(() => null),
     rosterOutlook(myTeam.id).catch(() => null),
   ]);
+
+  const news = await newsForPlayers(
+    [
+      ...myTeam.roster.map((r) => r.sleeperId).filter((id): id is string => !!id),
+      ...waivers.targets.map((t) => t.sleeperId),
+    ],
+    8,
+  ).catch(() => []);
 
   const cachedRec = await prisma.recommendation.findUnique({
     where: { teamId_season_week: { teamId: myTeam.id, season: league.season, week: startSit.week } },
@@ -347,6 +356,32 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {/* Community context (Phase 4): Reddit + YouTube, matched to your players */}
+      {news.length > 0 && (
+        <section className="rounded-xl border border-border bg-surface p-4 mb-5">
+          <h2 className="font-medium mb-3">News on your roster &amp; targets</h2>
+          <div className="space-y-2 text-sm">
+            {news.map((n) => (
+              <a
+                key={n.url}
+                href={n.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block rounded-lg border border-border p-2 hover:bg-accent/5"
+              >
+                <div className="flex items-center gap-2 text-xs text-muted uppercase mb-0.5">
+                  <span>{n.source === "reddit" ? "Reddit" : "YouTube"}</span>
+                  <span>·</span>
+                  <span>{n.players.join(", ")}</span>
+                </div>
+                <div className="font-medium">{n.title}</div>
+                {n.summary && <div className="text-muted text-xs mt-0.5 line-clamp-2">{n.summary}</div>}
+              </a>
+            ))}
+          </div>
         </section>
       )}
 

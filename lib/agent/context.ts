@@ -7,6 +7,7 @@ import { startSitForTeam } from "@/lib/features/startsit";
 import { waiverTargets } from "@/lib/features/waivers";
 import { getSurvival } from "@/lib/features/survival";
 import { rosterOutlook } from "@/lib/features/roster";
+import { newsForPlayers } from "@/lib/features/news";
 
 export interface LeagueContext {
   league: {
@@ -54,6 +55,16 @@ export interface LeagueContext {
     injuryStatus: string | null;
     suggestedFaab: string;
   }[];
+  // Community context (Phase 4): Reddit/YouTube items mentioning a rostered or
+  // waiver-relevant player, most recent first. Empty until REDDIT_CLIENT_ID is
+  // set and/or the refresh-news cron has run.
+  news: {
+    source: "reddit" | "youtube";
+    players: string[];
+    title: string;
+    summary: string | null;
+    publishedAt: string;
+  }[];
   dataAvailable: string[];
 }
 
@@ -68,6 +79,12 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
     getSurvival(teamId).catch(() => null),
     rosterOutlook(teamId).catch(() => null),
   ]);
+
+  const newsIds = [
+    ...team.roster.map((r) => r.sleeperId).filter((id): id is string => !!id),
+    ...wv.targets.map((t) => t.sleeperId),
+  ];
+  const news = await newsForPlayers(newsIds, 8).catch(() => []);
 
   const fmt = team.league.ppr === 1 ? "PPR" : team.league.ppr === 0.5 ? "Half-PPR" : "Standard";
   const sf = team.league.numQbs === 2 ? " Superflex" : "";
@@ -139,10 +156,18 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       injuryStatus: t.injuryStatus,
       suggestedFaab: t.faab.dollars != null ? `$${t.faab.dollars}` : `${t.faab.pct}%`,
     })),
+    news: news.map((n) => ({
+      source: n.source,
+      players: n.players,
+      title: n.title,
+      summary: n.summary,
+      publishedAt: n.publishedAt.toISOString(),
+    })),
     dataAvailable: [
       "consensus projections (Sleeper + ESPN)",
       "FantasyCalc market values",
       "current rosters for all teams in the league",
+      ...(news.length > 0 ? ["Reddit/YouTube community context"] : []),
     ],
   };
 }
