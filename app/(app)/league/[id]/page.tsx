@@ -8,6 +8,7 @@ import { getMatchup } from "@/lib/features/matchup";
 import { getSurvival } from "@/lib/features/survival";
 import { rosterOutlook } from "@/lib/features/roster";
 import { newsForPlayers } from "@/lib/features/news";
+import { propsForPlayers } from "@/lib/features/props";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { TradeAnalyzer } from "./TradeAnalyzer";
 import { Recommendations } from "./Recommendations";
@@ -53,13 +54,14 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
     rosterOutlook(myTeam.id).catch(() => null),
   ]);
 
-  const news = await newsForPlayers(
-    [
-      ...myTeam.roster.map((r) => r.sleeperId).filter((id): id is string => !!id),
-      ...waivers.targets.map((t) => t.sleeperId),
-    ],
-    8,
-  ).catch(() => []);
+  const contextIds = [
+    ...myTeam.roster.map((r) => r.sleeperId).filter((id): id is string => !!id),
+    ...waivers.targets.map((t) => t.sleeperId),
+  ];
+  const [news, props] = await Promise.all([
+    newsForPlayers(contextIds, 8).catch(() => []),
+    propsForPlayers(contextIds, league.season, startSit.week).catch(() => []),
+  ]);
 
   const cachedRec = await prisma.recommendation.findUnique({
     where: { teamId_season_week: { teamId: myTeam.id, season: league.season, week: startSit.week } },
@@ -356,6 +358,43 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {/* Player props (Phase 5): sportsbook lines, a cross-check alongside the projection */}
+      {props.length > 0 && (
+        <section className="rounded-xl border border-border bg-surface p-4 mb-5">
+          <h2 className="font-medium mb-3">Player props — Week {startSit.week}</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted uppercase">
+                  <th className="py-1 pr-2">Player</th>
+                  <th className="py-1 pr-2 text-right">Pass yds</th>
+                  <th className="py-1 pr-2 text-right">Rush yds</th>
+                  <th className="py-1 pr-2 text-right">Rec yds</th>
+                  <th className="py-1 pr-2 text-right">Anytime TD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {props.map((p) => (
+                  <tr key={p.sleeperId} className="border-t border-border">
+                    <td className="py-1 pr-2">{p.name}</td>
+                    <td className="py-1 pr-2 text-right text-muted">{p.passYdsLine ?? "—"}</td>
+                    <td className="py-1 pr-2 text-right text-muted">{p.rushYdsLine ?? "—"}</td>
+                    <td className="py-1 pr-2 text-right text-muted">{p.recYdsLine ?? "—"}</td>
+                    <td className="py-1 pr-2 text-right text-muted">
+                      {p.anytimeTdProb != null ? `${Math.round(p.anytimeTdProb * 100)}%` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            Sportsbook lines (DraftKings where available) for your roster and top waiver targets — a
+            market cross-check alongside the projection above, not a replacement for it.
+          </p>
         </section>
       )}
 

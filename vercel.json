@@ -5,6 +5,7 @@
     { "path": "/api/cron/refresh-trade-values", "schedule": "0 10 * * *" },
     { "path": "/api/cron/refresh-projections", "schedule": "0 11 * * 2,4,6" },
     { "path": "/api/cron/refresh-my-leagues", "schedule": "0 12 * * *" },
-    { "path": "/api/cron/refresh-news", "schedule": "0 13,21 * * *" }
+    { "path": "/api/cron/refresh-news", "schedule": "0 13,21 * * *" },
+    { "path": "/api/cron/refresh-props", "schedule": "0 15 * * 4" }
   ]
 }

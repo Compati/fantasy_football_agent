@@ -129,6 +129,7 @@ model Player {
 
   projections Projection[]
   tradeValues TradeValue[]
+  playerProps PlayerProp[]
 
   @@index([espnId])
   @@index([yahooId])
@@ -216,4 +217,30 @@ model NewsItem {
   createdAt   DateTime @default(now())
 
   @@index([publishedAt])
+}
+
+// Phase 5: sportsbook player-prop lines (The Odds API), one row per
+// player/market/week. `line` is the yardage point for the yardage markets
+// (null for anytime_td, which is a Yes/No prop); prices are American odds.
+// Not an authoritative projection — a market cross-check the advisor and UI
+// cite alongside the consensus projection, never in place of it.
+model PlayerProp {
+  id        String @id @default(cuid())
+  sleeperId String
+  player    Player @relation(fields: [sleeperId], references: [sleeperId], onDelete: Cascade)
+
+  season Int
+  week   Int
+  market String // "player_pass_yds" | "player_rush_yds" | "player_anytime_td"
+
+  line       Float?
+  overPrice  Int?
+  underPrice Int?
+  yesPrice   Int?
+  bookmaker  String
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([sleeperId, season, week, market])
+  @@index([season, week])
 }

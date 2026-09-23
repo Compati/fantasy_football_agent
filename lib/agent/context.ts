@@ -8,6 +8,7 @@ import { waiverTargets } from "@/lib/features/waivers";
 import { getSurvival } from "@/lib/features/survival";
 import { rosterOutlook } from "@/lib/features/roster";
 import { newsForPlayers } from "@/lib/features/news";
+import { propsForPlayers } from "@/lib/features/props";
 
 export interface LeagueContext {
   league: {
@@ -65,6 +66,16 @@ export interface LeagueContext {
     summary: string | null;
     publishedAt: string;
   }[];
+  // Sportsbook player props (Phase 5), a market cross-check alongside the
+  // consensus projection — not a replacement for it. Empty until
+  // ODDS_API_KEY is set and the refresh-props cron has run.
+  props: {
+    player: string;
+    passYdsLine: number | null;
+    rushYdsLine: number | null;
+    recYdsLine: number | null;
+    anytimeTdProb: number | null; // 0-1
+  }[];
   dataAvailable: string[];
 }
 
@@ -80,11 +91,14 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
     rosterOutlook(teamId).catch(() => null),
   ]);
 
-  const newsIds = [
+  const contextIds = [
     ...team.roster.map((r) => r.sleeperId).filter((id): id is string => !!id),
     ...wv.targets.map((t) => t.sleeperId),
   ];
-  const news = await newsForPlayers(newsIds, 8).catch(() => []);
+  const [news, props] = await Promise.all([
+    newsForPlayers(contextIds, 8).catch(() => []),
+    propsForPlayers(contextIds, team.league.season, ss.week).catch(() => []),
+  ]);
 
   const fmt = team.league.ppr === 1 ? "PPR" : team.league.ppr === 0.5 ? "Half-PPR" : "Standard";
   const sf = team.league.numQbs === 2 ? " Superflex" : "";
@@ -163,11 +177,19 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       summary: n.summary,
       publishedAt: n.publishedAt.toISOString(),
     })),
+    props: props.map((p) => ({
+      player: p.name,
+      passYdsLine: p.passYdsLine,
+      rushYdsLine: p.rushYdsLine,
+      recYdsLine: p.recYdsLine,
+      anytimeTdProb: p.anytimeTdProb != null ? Math.round(p.anytimeTdProb * 100) / 100 : null,
+    })),
     dataAvailable: [
       "consensus projections (Sleeper + ESPN)",
       "FantasyCalc market values",
       "current rosters for all teams in the league",
       ...(news.length > 0 ? ["YouTube community context"] : []),
+      ...(props.length > 0 ? ["sportsbook player props"] : []),
     ],
   };
 }
