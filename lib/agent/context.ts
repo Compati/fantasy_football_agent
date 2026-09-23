@@ -55,11 +55,11 @@ export interface LeagueContext {
     injuryStatus: string | null;
     suggestedFaab: string;
   }[];
-  // Community context (Phase 4): Reddit/YouTube items mentioning a rostered or
-  // waiver-relevant player, most recent first. Empty until REDDIT_CLIENT_ID is
-  // set and/or the refresh-news cron has run.
+  // Community context (Phase 4): YouTube items mentioning a rostered or
+  // waiver-relevant player, most recent first. Empty until the refresh-news
+  // cron has run.
   news: {
-    source: "reddit" | "youtube";
+    source: "youtube";
     players: string[];
     title: string;
     summary: string | null;
@@ -167,7 +167,7 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       "consensus projections (Sleeper + ESPN)",
       "FantasyCalc market values",
       "current rosters for all teams in the league",
-      ...(news.length > 0 ? ["Reddit/YouTube community context"] : []),
+      ...(news.length > 0 ? ["YouTube community context"] : []),
     ],
   };
 }

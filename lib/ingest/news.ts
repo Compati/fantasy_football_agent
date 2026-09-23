@@ -1,12 +1,18 @@
-// Phase 4: pull Reddit + YouTube community context and tag it to the players
-// it actually mentions. Only items that name a fantasy-relevant player (one
-// with a projection this week) are kept — an untagged item is just noise no
+// Phase 4: pull YouTube community context and tag it to the players it
+// actually mentions. Only items that name a fantasy-relevant player (one with
+// a projection this week) are kept — an untagged item is just noise no
 // feature or the advisor could ground anything in.
+//
+// Reddit was dropped from this phase: Reddit now requires "explicit approval"
+// / a registered developer profile under its 2026 Responsible Builder Policy
+// even for a personal read-only script, and the classic self-serve
+// reddit.com/prefs/apps registration flow wasn't completable. Not worth the
+// ongoing friction for a hobby project when YouTube alone already covers this
+// well.
 
 import { prisma } from "@/lib/db";
 import { getNflState } from "@/lib/sleeper";
 import { ensureCatalogFresh, normalizeName } from "@/lib/players";
-import { redditConfigured, fetchSubredditPosts, DEFAULT_SUBREDDITS } from "@/lib/reddit";
 import { DEFAULT_CHANNELS, fetchChannelVideos, fetchTranscriptText } from "@/lib/youtube";
 
 interface PlayerMatcher {
@@ -54,7 +60,6 @@ async function relevantPlayers(): Promise<{ sleeperId: string; name: string }[]>
 }
 
 export interface NewsRefreshResult {
-  redditChecked: number;
   youtubeChecked: number;
   itemsUpserted: number;
   pruned: number;
@@ -65,33 +70,8 @@ export async function refreshNews(): Promise<NewsRefreshResult> {
   const players = await relevantPlayers();
   const matcher = buildPlayerMatcher(players);
 
-  let redditChecked = 0;
   let youtubeChecked = 0;
   let itemsUpserted = 0;
-
-  if (matcher.length > 0 && redditConfigured()) {
-    for (const subreddit of DEFAULT_SUBREDDITS) {
-      const posts = await fetchSubredditPosts(subreddit, { limit: 30 }).catch(() => []);
-      redditChecked += posts.length;
-      for (const post of posts) {
-        const playerIds = matchPlayers(`${post.title} ${post.summary ?? ""}`, matcher);
-        if (playerIds.length === 0) continue;
-        await prisma.newsItem.upsert({
-          where: { url: post.url },
-          create: {
-            source: "reddit",
-            url: post.url,
-            title: post.title,
-            summary: post.summary,
-            publishedAt: post.publishedAt,
-            playerIds,
-          },
-          update: { title: post.title, summary: post.summary, playerIds },
-        });
-        itemsUpserted++;
-      }
-    }
-  }
 
   if (matcher.length > 0) {
     const videoLists = await Promise.all(
@@ -128,7 +108,7 @@ export async function refreshNews(): Promise<NewsRefreshResult> {
   }
 
   const pruned = await pruneOldNews();
-  return { redditChecked, youtubeChecked, itemsUpserted, pruned };
+  return { youtubeChecked, itemsUpserted, pruned };
 }
 
 // News older than this stops being a useful start/sit or waiver signal — keep

@@ -1,5 +1,5 @@
-// Surface ingested Reddit/YouTube items relevant to a specific set of players
-// (a team's roster + its waiver targets). The NewsItem table is small and
+// Surface ingested YouTube items relevant to a specific set of players (a
+// team's roster + its waiver targets). The NewsItem table is small and
 // already pre-filtered to player mentions (see lib/ingest/news.ts), so this
 // just intersects in JS rather than needing JSON-array queries SQLite doesn't
 // support well.
@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import { playerDetailMap } from "@/lib/players";
 
 export interface PlayerNewsItem {
-  source: "reddit" | "youtube";
+  source: "youtube";
   url: string;
   title: string;
   summary: string | null;
@@ -27,7 +27,7 @@ export async function newsForPlayers(sleeperIds: string[], limit = 8): Promise<P
   const names = await playerDetailMap([...mentionedIds]);
 
   return relevant.slice(0, limit).map((r) => ({
-    source: r.source as "reddit" | "youtube",
+    source: r.source as "youtube",
     url: r.url,
     title: r.title,
     summary: r.summary,

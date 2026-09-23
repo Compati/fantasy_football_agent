@@ -359,7 +359,7 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
         </section>
       )}
 
-      {/* Community context (Phase 4): Reddit + YouTube, matched to your players */}
+      {/* Community context (Phase 4): YouTube, matched to your players */}
       {news.length > 0 && (
         <section className="rounded-xl border border-border bg-surface p-4 mb-5">
           <h2 className="font-medium mb-3">News on your roster &amp; targets</h2>
@@ -373,7 +373,7 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
                 className="block rounded-lg border border-border p-2 hover:bg-accent/5"
               >
                 <div className="flex items-center gap-2 text-xs text-muted uppercase mb-0.5">
-                  <span>{n.source === "reddit" ? "Reddit" : "YouTube"}</span>
+                  <span>YouTube</span>
                   <span>·</span>
                   <span>{n.players.join(", ")}</span>
                 </div>

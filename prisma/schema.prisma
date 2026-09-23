@@ -200,11 +200,13 @@ model Recommendation {
   @@unique([teamId, season, week])
 }
 
-// Community context (Phase 4): Reddit threads + YouTube transcripts, matched to
-// players. playerIds is a JSON array of sleeperIds referenced by the item.
+// Community context (Phase 4): YouTube video transcripts, matched to players.
+// playerIds is a JSON array of sleeperIds referenced by the item. `source` is
+// left as a free string (currently always "youtube") rather than an enum in
+// case another source is added later.
 model NewsItem {
   id          String   @id @default(cuid())
-  source      String // "reddit" | "youtube"
+  source      String // "youtube"
   url         String   @unique
   title       String
   summary     String?
