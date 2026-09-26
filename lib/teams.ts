@@ -87,3 +87,11 @@ export function teamAbbr(raw: string): string | null {
 export function canonicalTeamName(raw: string): string {
   return resolveTeam(raw)?.name ?? raw;
 }
+
+// Resolve a team by nickname alone ("Seahawks", "49ers") — ESPN names its
+// defenses "<Nickname> D/ST". Nicknames are unique across the league.
+export function teamByNickname(nickname: string): NflTeam | null {
+  const n = nickname.trim().toLowerCase();
+  if (!n) return null;
+  return NFL_TEAMS.find((t) => t.name.toLowerCase().endsWith(` ${n}`)) ?? null;
+}

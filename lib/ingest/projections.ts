@@ -10,6 +10,7 @@ import { getEspnProjections } from "@/lib/projections/espn";
 import { getCbsProjections } from "@/lib/projections/cbs";
 import { getFftodayProjections } from "@/lib/projections/fftoday";
 import type { ScrapedProjection, ScrapedResult } from "@/lib/projections/scraped";
+import { scaleToReference } from "@/lib/projections/consensus";
 import { ensureCatalogFresh, normalizeName } from "@/lib/players";
 import type { ProjectionRow } from "@/lib/types";
 
@@ -95,7 +96,10 @@ export async function refreshProjections(
   ]);
 
   const sleeperN = await replaceSource("sleeper", s, w, sleeperRows, validIds);
-  const espnN = await replaceSource("espn", s, w, espnRes.rows, validIds);
+  // ESPN's D/ST scoring runs well below Sleeper's; keep its ranking, use Sleeper's scale.
+  const defIds = new Set(players.filter((p) => p.position === "DEF").map((p) => p.sleeperId));
+  const espnRows = scaleToReference(espnRes.rows, sleeperRows, defIds);
+  const espnN = await replaceSource("espn", s, w, espnRows, validIds);
   // A scrape that failed or came back empty (site down, markup changed, week not
   // published yet) keeps the previous rows rather than wiping that source.
   const cbsN = cbsRes.rows.length ? await replaceSource("cbs", s, w, cbsRes.rows, validIds) : 0;

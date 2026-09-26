@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { impliedProbability, parseEventOdds, type RawEventOdds } from "@/lib/odds";
-import { resolveTeam, teamAbbr, canonicalTeamName } from "@/lib/teams";
+import { resolveTeam, teamAbbr, canonicalTeamName, teamByNickname } from "@/lib/teams";
 
 test("impliedProbability converts favorite (negative) American odds", () => {
   // -155 favorite: 155/255
@@ -97,4 +97,12 @@ test("parseEventOdds falls back to the first bookmaker when the preferred one is
 
 test("parseEventOdds returns nothing for an event with no bookmakers", () => {
   assert.deepEqual(parseEventOdds({ bookmakers: [] }, ["player_pass_yds"]), []);
+});
+
+test("teamByNickname resolves ESPN D/ST nicknames, incl. numeric ones", () => {
+  assert.equal(teamByNickname("Seahawks")?.abbr, "SEA");
+  assert.equal(teamByNickname("49ers")?.abbr, "SF");
+  assert.equal(teamByNickname("Jaguars")?.abbr, "JAX");
+  assert.equal(teamByNickname("Bears")?.abbr, "CHI");
+  assert.equal(teamByNickname(""), null);
 });

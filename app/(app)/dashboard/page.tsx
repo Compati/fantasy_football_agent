@@ -4,6 +4,10 @@ import { prisma } from "@/lib/db";
 import { yahooConfigured } from "@/lib/yahoo/oauth";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { ConnectPanel } from "./ConnectPanel";
+import { refreshSleeperLeagueIfStale } from "@/lib/ingest/sleeper";
+
+// Same freshness rule as the league page: re-pull a Sleeper roster older than this.
+const ROSTER_STALE_MS = 5 * 60_000;
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +18,16 @@ export default async function Dashboard({
 }) {
   const user = await requireUser();
   const { yahoo } = await searchParams;
+
+  // Re-sync stale Sleeper rosters first (best effort) so the cards reflect moves
+  // made in the Sleeper app.
+  const sleeperLeagues = await prisma.league.findMany({
+    where: { platform: "sleeper", connection: { userId: user.id } },
+    select: { id: true },
+  });
+  await Promise.all(
+    sleeperLeagues.map((l) => refreshSleeperLeagueIfStale(l.id, ROSTER_STALE_MS).catch(() => false)),
+  );
 
   const [connections, leagues, recs] = await Promise.all([
     prisma.connection.findMany({ where: { userId: user.id }, select: { platform: true } }),

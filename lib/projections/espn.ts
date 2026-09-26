@@ -15,6 +15,7 @@
 
 import { getJson } from "@/lib/http";
 import type { ProjectionRow } from "@/lib/types";
+import { teamByNickname } from "@/lib/teams";
 
 const HOST = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl";
 
@@ -97,6 +98,10 @@ export async function getEspnProjections(
     matched++;
 
     let sleeperId = espnIdToSleeperId.get(String(espnId)) ?? null;
+    // Defenses: "Seahawks D/ST" -> Sleeper's DEF id, which is the team abbrev.
+    if (!sleeperId && p.defaultPositionId === 16 && p.fullName) {
+      sleeperId = teamByNickname(p.fullName.replace(/\s*D\/ST$/i, ""))?.abbr ?? null;
+    }
     if (!sleeperId && namePosResolver && p.fullName && p.defaultPositionId != null) {
       const pos = ESPN_POSITION[p.defaultPositionId];
       if (pos) sleeperId = namePosResolver(p.fullName, pos);

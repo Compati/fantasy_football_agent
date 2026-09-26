@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blendProjections } from "@/lib/projections/consensus";
+import { blendProjections, scaleToReference } from "@/lib/projections/consensus";
 import type { ProjectionRow } from "@/lib/types";
 
 function row(sleeperId: string, source: ProjectionRow["source"], points: number): ProjectionRow {
@@ -39,4 +39,18 @@ test("separate players are grouped independently", () => {
   assert.equal(m.get("a")!.points, 8);
   assert.equal(m.get("b")!.points, 20);
   assert.equal(m.size, 2);
+});
+
+test("scaleToReference rescales only the chosen ids by the median ratio", () => {
+  const defs = ["d1", "d2", "d3"];
+  const espn = [...defs.map((id, i) => row(id, "espn", 4 + i)), row("wr", "espn", 10)];
+  const sleeper = defs.map((id, i) => row(id, "sleeper", (4 + i) * 1.25));
+  const out = scaleToReference(espn, sleeper, new Set(defs), 3);
+  assert.deepEqual(out.map((r) => r.points), [5, 6.25, 7.5, 10]); // WR untouched
+});
+
+test("scaleToReference leaves rows alone without enough overlap", () => {
+  const espn = [row("d1", "espn", 4)];
+  const out = scaleToReference(espn, [row("d1", "sleeper", 8)], new Set(["d1"]));
+  assert.equal(out[0].points, 4);
 });

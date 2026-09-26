@@ -46,3 +46,28 @@ export function blendProjections(rows: ProjectionRow[]): Map<string, Consensus> 
   }
   return out;
 }
+
+// Rescale one source's rows for a set of players onto a reference source's
+// scale, using the median ratio over players both sources project. Used for
+// DEF, where each site's scoring differs (ESPN's D/ST runs ~0.8x Sleeper's)
+// but its *ranking* is still a useful second opinion. Needs a handful of
+// overlapping players to trust the ratio; otherwise returns rows unchanged.
+export function scaleToReference(
+  rows: ProjectionRow[],
+  reference: ProjectionRow[],
+  ids: Set<string>,
+  minOverlap = 8,
+): ProjectionRow[] {
+  const ref = new Map(reference.map((r) => [r.sleeperId, r.points]));
+  const ratios: number[] = [];
+  for (const r of rows) {
+    const base = ref.get(r.sleeperId);
+    if (ids.has(r.sleeperId) && base && base > 0 && r.points > 0) ratios.push(base / r.points);
+  }
+  if (ratios.length < minOverlap) return rows;
+  ratios.sort((a, b) => a - b);
+  const factor = ratios[Math.floor(ratios.length / 2)];
+  return rows.map((r) =>
+    ids.has(r.sleeperId) ? { ...r, points: Math.round(r.points * factor * 100) / 100 } : r,
+  );
+}
