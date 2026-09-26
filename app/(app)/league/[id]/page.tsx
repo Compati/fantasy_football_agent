@@ -9,6 +9,7 @@ import { getSurvival } from "@/lib/features/survival";
 import { rosterOutlook } from "@/lib/features/roster";
 import { newsForPlayers } from "@/lib/features/news";
 import { propsForPlayers } from "@/lib/features/props";
+import { refreshSleeperLeague } from "@/lib/ingest/sleeper";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { TradeAnalyzer } from "./TradeAnalyzer";
 import { Recommendations } from "./Recommendations";
@@ -18,6 +19,10 @@ export const dynamic = "force-dynamic";
 // Compact slot labels so long ones (SUPER_FLEX) don't overflow.
 const SLOT_LABELS: Record<string, string> = { SUPER_FLEX: "SFLX", IDP_FLEX: "IDP" };
 const slotLabel = (s: string) => SLOT_LABELS[s] ?? s;
+
+// Re-pull rosters from Sleeper when our copy is older than this, so adds/drops
+// and lineup changes made in the Sleeper app show up here.
+const ROSTER_STALE_MS = 5 * 60_000;
 
 // ["RB","RB","WR"] -> "2 RB, 1 WR"
 function slotCounts(slots: string[]): string {
@@ -30,11 +35,18 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
   const user = await requireUser();
   const { id } = await params;
 
-  const league = await prisma.league.findFirst({
-    where: { id, connection: { userId: user.id } },
-    include: { teams: { include: { roster: true } } },
-  });
+  const loadLeague = () =>
+    prisma.league.findFirst({
+      where: { id, connection: { userId: user.id } },
+      include: { teams: { include: { roster: true } } },
+    });
+  let league = await loadLeague();
   if (!league) notFound();
+  if (league.platform === "sleeper" && Date.now() - league.updatedAt.getTime() > ROSTER_STALE_MS) {
+    // Best effort: if Sleeper is unreachable, render the last-synced roster.
+    const refreshed = await refreshSleeperLeague(league.id).then(loadLeague).catch(() => null);
+    if (refreshed) league = refreshed;
+  }
 
   const myTeam = league.teams.find((t) => t.isMine);
   if (!myTeam) {
