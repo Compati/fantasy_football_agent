@@ -69,6 +69,7 @@ export interface StartSitResult {
   currentTotal: number;
   delta: number; // points left on the bench (optimal - current)
   lineup: SlotAssignment[]; // recommended optimal lineup
+  players: LineupPlayer[]; // every rostered player with a canonical id (starters + bench)
   start: LineupPlayer[]; // move these into the lineup
   sit: LineupPlayer[]; // move these to the bench
   closeCalls: { starter: LineupPlayer; alternative: LineupPlayer; gap: number }[];
@@ -171,6 +172,7 @@ export async function startSitForTeam(
     currentTotal: Math.round(currentTotal * 100) / 100,
     delta: Math.round((optimalTotal - currentTotal) * 100) / 100,
     lineup,
+    players,
     start,
     sit,
     closeCalls,

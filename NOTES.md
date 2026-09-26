@@ -1,5 +1,21 @@
 # Dev log
 
+## 2026-09-27 — advisor check-in (`scripts/advisor-check.ts`) + fixes
+
+Ran the real advisor (Sonnet 5) on all 3 leagues and reviewed it against its context:
+- **BUG (since Phase 3): every bench player reached the advisor with proj 0** — `context.ts` looked
+  bench players up in the *starting lineup*. Caused "drop Tre Tucker (0.0 proj)" (really 10.2) and
+  "5 zero-projected bench RBs". Fixed via new `StartSitResult.players`; bench now also carries
+  `marketValue` + `injuryStatus`.
+- **Drops** were "lowest-projected bench player" → it cut injured-but-valuable players (Caleb
+  Williams, Jonah Coleman). Now: lowest rest-of-season marketValue at a surplus position, never
+  drop for a one-week injury if the value is meaningful.
+- **DvP rank misread**: `oppRankVsPos: 1` read as "top-ranked defense" (it means allows the MOST).
+  Now a plain-English `oppVsPosition` string.
+- **Waved off free swaps** ("0.91 pts negligible") while claiming the lineup was optimal → prompt
+  now requires naming every shouldStart/shouldSit swap.
+Final run: all three plans grounded and correct.
+
 ## 2026-09-27 — backtest (`scripts/backtest.ts projections|matchup|faab`) + two corrections
 
 - **Projections, 2026 wks 1-2 (453 player-weeks, all 4 sources):** 4-source trimmed blend MAE

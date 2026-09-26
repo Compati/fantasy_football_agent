@@ -23,7 +23,7 @@ export interface LeagueContext {
     optimalPoints: number;
     currentPoints: number;
     pointsLeftOnBench: number;
-    recommendedLineup: { slot: string; player: string; proj: number; sources: number; opponent?: string | null; matchup?: string; impliedTotal?: number | null; oppRankVsPos?: number | null }[];
+    recommendedLineup: { slot: string; player: string; proj: number; sources: number; opponent?: string | null; matchup?: string; impliedTotal?: number | null; oppVsPosition?: string | null }[];
     shouldStart: { player: string; proj: number }[];
     shouldSit: { player: string; proj: number }[];
     closeCalls: { starter: string; alternative: string; gap: number }[];
@@ -41,7 +41,9 @@ export interface LeagueContext {
     onTheBlock: string;
     survivalProb: number | null;
   };
-  bench: { player: string; position: string; proj: number }[];
+  // marketValue = rest-of-season trade value (0 = none/unknown): the basis for
+  // drop decisions, since a player hurt THIS week projects 0 but may be valuable.
+  bench: { player: string; position: string; proj: number; marketValue: number; injuryStatus: string | null }[];
   outlook: {
     thinPositions: { position: string; have: number; dedicatedStarters: number }[];
     upcomingByes: { week: number; players: string[]; unfilledSlots: string[] }[];
@@ -111,14 +113,28 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
   const sf = team.league.numQbs === 2 ? " Superflex" : "";
 
   const startIds = new Set(ss.lineup.map((a) => a.player?.sleeperId).filter(Boolean));
-  const bench = ss.lineup.length
-    ? team.roster
-        .filter((r) => r.sleeperId && !startIds.has(r.sleeperId))
-        .map((r) => {
-          const p = ss.lineup.find((a) => a.player?.sleeperId === r.sleeperId)?.player;
-          return { player: r.name, position: r.position, proj: p?.proj ?? 0 };
-        })
-    : [];
+  const benchPlayers = ss.players.filter((p) => !startIds.has(p.sleeperId));
+  const benchValues = new Map(
+    (
+      await prisma.tradeValue.findMany({
+        where: {
+          sleeperId: { in: benchPlayers.map((p) => p.sleeperId) },
+          isDynasty: false,
+          ppr: team.league.ppr,
+          numQbs: team.league.numQbs,
+          numTeams: team.league.numTeams,
+        },
+        select: { sleeperId: true, value: true },
+      })
+    ).map((v) => [v.sleeperId, v.value]),
+  );
+  const bench = benchPlayers.map((p) => ({
+    player: p.name,
+    position: p.position,
+    proj: p.proj,
+    marketValue: benchValues.get(p.sleeperId) ?? 0,
+    injuryStatus: p.injuryStatus ?? null,
+  }));
 
   return {
     league: {
@@ -148,7 +164,9 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
             opponent: m?.opponent ?? null,
             matchup: m?.label,
             impliedTotal: m?.impliedTotal ?? null,
-            oppRankVsPos: m?.dvpRank ?? null,
+            // Spelled out: a bare "rank 1" was misread as "top defense" (it means
+            // the opponent allows the MOST points, i.e. the easiest matchup).
+            oppVsPosition: m?.opponent && m.dvpRank != null ? describeDvp(m.opponent, m.dvpRank, a.player!.position) : null,
           };
         }),
       shouldStart: ss.start.map((p) => ({ player: p.name, proj: p.proj })),
@@ -183,7 +201,7 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       })),
       nextByeCrunchWeek: outlook?.nextByeCrunch?.week ?? null,
     },
-    bench: bench.filter((b) => !ss.lineup.some((a) => a.player?.name === b.player)),
+    bench,
     waiverTargets: wv.targets.map((t) => ({
       player: t.name,
       position: t.position,
@@ -219,4 +237,11 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       ...(props.length > 0 ? ["sportsbook player props"] : []),
     ],
   };
+}
+
+// "DET allows the 1st-most PPR points to QBs (of 32; easiest matchup)"
+function describeDvp(opponent: string, rank: number, position: string): string {
+  const ord = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
+  const ease = rank <= 6 ? "easy matchup" : rank >= 27 ? "hard matchup" : "average matchup";
+  return `${opponent} allows the ${ord(rank)}-most PPR points to ${position}s (of 32; ${ease})`;
 }
