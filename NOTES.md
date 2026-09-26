@@ -1,5 +1,23 @@
 # Dev log
 
+## 2026-09-26 — FAAB bids calibrated on real league bids
+
+The old `faabSuggestion` bid a flat % of *remaining* budget by projection tier (45% for 15+ proj)
+and ran ~10-15x above what Alex's leagues actually pay for streamers (e.g. Deshaun Watson cleared at
+$17 in CS Guillotine vs ~$280 suggested). Replaced with `lib/features/faab.ts` (pure, tested) +
+`lib/ingest/waiver-history.ts` + `WaiverClaim` model (every Sleeper waiver claim, won + failed,
+stamped with the Sleeper projection for that week; auto-refreshed when >12h old from
+`waiverTargets`).
+- Tier = higher of market-value tier and projection tier (QB shifted down 4 pts in 1-QB leagues);
+  DEF/K own tier. Prices in % of STARTING budget.
+- Range per league+tier: low = median winning bid, high = p80 (p90 was dominated by one-off
+  overpays). <3 own samples -> pooled across the user's leagues, each sample normalized by its own
+  league's spend factor, then rescaled to the target league (without that, Panini's $76 hype buy
+  inflated Guillotine's ranges). Going rate (low) is monotonic across tiers; high is not (carrying
+  highs upward spread handcuff-panic outliers into every tier).
+- Bid = high if he clearly starts for you (≥3 pts over weakest eligible starter), midpoint if a
+  marginal upgrade, low if depth. `scripts/faab-check.ts` prints ranges per league.
+
 ## 2026-09-26 — opponent-aware start/sit + roster/DEF cleanups
 
 - **Opponent context** (`lib/features/opponent.ts`, `lib/ingest/opponent.ts`, models `GameLine` +

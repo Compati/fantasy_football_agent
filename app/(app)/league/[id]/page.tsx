@@ -11,6 +11,7 @@ import { newsForPlayers } from "@/lib/features/news";
 import { propsForPlayers } from "@/lib/features/props";
 import { refreshSleeperLeagueIfStale } from "@/lib/ingest/sleeper";
 import type { PlayerMatchup } from "@/lib/features/opponent";
+import type { FaabAdvice } from "@/lib/features/waivers";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { TradeAnalyzer } from "./TradeAnalyzer";
 import { Recommendations } from "./Recommendations";
@@ -308,7 +309,8 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
                 <th className="py-1 pr-2 text-right">Proj</th>
                 <th className="py-1 pr-2 text-right">Value</th>
                 <th className="py-1 pr-2 text-right">Trend</th>
-                <th className="py-1 pr-2 text-right">FAAB bid</th>
+                <th className="py-1 pr-2 text-right">FAAB range</th>
+                <th className="py-1 pr-2 text-right">Bid</th>
               </tr>
             </thead>
             <tbody>
@@ -329,8 +331,21 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
                   >
                     {t.trend30 > 0 ? "▲" : t.trend30 < 0 ? "▼" : "–"}
                   </td>
-                  <td className="py-1 pr-2 text-right">
-                    {t.faab.dollars != null ? `$${t.faab.dollars}` : `${t.faab.pct}%`}
+                  <td
+                    className="py-1 pr-2 text-right text-muted whitespace-nowrap"
+                    title={t.faab ? faabTitle(t.faab) : undefined}
+                  >
+                    {t.faab ? `$${t.faab.low}–$${t.faab.high}` : "—"}
+                  </td>
+                  <td className="py-1 pr-2 text-right whitespace-nowrap">
+                    {t.faab ? (
+                      <>
+                        <span className={t.faab.need === "starts" ? "font-medium" : ""}>${t.faab.bid}</span>
+                        <span className="ml-1 text-xs text-muted">{t.faab.need}</span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 </tr>
               ))}
@@ -338,7 +353,10 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
           </table>
         </div>
         <p className="mt-2 text-xs text-muted">
-          FAAB suggested as a % of your remaining budget, sized by projection and market trend.
+          FAAB range is priced off this league&apos;s own winning bids for comparable players: low = the
+          going rate (nice to have), high = beats nearly every comparable claim (you need him this
+          week). Bid = high if he&apos;d clearly start for you (3+ pts over your weakest eligible starter),
+          midpoint if he&apos;s a marginal upgrade, low if he&apos;s depth. Hover a range for the basis.
           A <span className="font-mono">~</span> value is a projection-derived estimate (outside FantasyCalc&apos;s set).
         </p>
       </section>
@@ -482,4 +500,22 @@ function MatchupTag({ m, position }: { m: PlayerMatchup; position: string }) {
       {m.label !== "neutral" && <span className={`ml-1 ${MATCHUP_STYLE[m.label]}`}>{m.label}</span>}
     </span>
   );
+}
+
+const FAAB_TIER_LABEL: Record<FaabAdvice["tier"], string> = {
+  impact: "impact player",
+  starter: "starter",
+  flex: "flex / streamer",
+  depth: "depth",
+  dst_k: "DEF / K",
+};
+
+function faabTitle(f: FaabAdvice): string {
+  const basis =
+    f.basis === "league"
+      ? `this league's ${f.samples} winning bids`
+      : f.basis === "pooled"
+        ? `${f.samples} winning bids across your leagues, scaled to this league's spending`
+        : "defaults (no bid history yet)";
+  return `${FAAB_TIER_LABEL[f.tier]} tier · based on ${basis}`;
 }

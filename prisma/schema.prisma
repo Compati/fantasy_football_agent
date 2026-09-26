@@ -72,6 +72,7 @@ model League {
   scoringSettings Json // raw platform scoring map
 
   updatedAt DateTime @updatedAt
+  waiverClaims WaiverClaim[]
   teams     Team[]
 
   @@unique([platform, externalId])
@@ -282,4 +283,23 @@ model GameLine {
   updatedAt DateTime @updatedAt
 
   @@unique([season, week, team])
+}
+
+// Every waiver claim in a league (won and failed), for calibrating FAAB bid
+// ranges on what the league actually pays (lib/features/faab.ts).
+model WaiverClaim {
+  id            String  @id @default(cuid())
+  leagueId      String
+  league        League  @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  transactionId String  @unique
+  week          Int
+  sleeperId     String
+  position      String
+  bid           Int
+  won           Boolean
+  projAtClaim   Float? // Sleeper PPR projection for the claim's week
+
+  updatedAt DateTime @updatedAt
+
+  @@index([leagueId])
 }

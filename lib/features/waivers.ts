@@ -1,51 +1,52 @@
 // Waiver / free-agent engine. Ranks available players by consensus projection
-// and market value, and sizes a FAAB bid as a % of remaining budget.
+// and market value, and gives a FAAB bid range priced off what this league
+// actually pays (lib/features/faab.ts).
 
 import { prisma } from "@/lib/db";
 import { getNflState } from "@/lib/sleeper";
 import { blendProjections } from "@/lib/projections/consensus";
 import { injuryAdjustedProj } from "@/lib/features/injury";
 import type { ProjectionRow } from "@/lib/types";
+import { faabTier, faabRange, faabNeed, bidForNeed, type ClaimSample, type FaabRange, type FaabNeed } from "@/lib/features/faab";
+import { ensureWaiverHistoryFresh } from "@/lib/ingest/waiver-history";
+import { optimizeLineup } from "@/lib/features/startsit";
+import { starterSlots } from "@/lib/ingest/sleeper-transform";
+import { isEligible } from "@/lib/features/eligibility";
 
 const STARTABLE = new Set(["QB", "RB", "WR", "TE", "K", "DEF"]);
 
-export interface FaabSuggestion {
-  pct: number; // suggested % of remaining budget
-  dollars: number | null; // resolved amount if a budget is known
-  rationale: string;
+export interface FaabAdvice extends FaabRange {
+  bid: number; // high end if he clearly starts for you, midpoint if marginal, else low
+  need: FaabNeed;
 }
 
-// Transparent, tier-based bid sizing off this week's projection, nudged by the
-// 30-day market trend. Pure + unit-tested.
-export function faabSuggestion(
-  proj: number,
-  trend30: number,
-  remainingBudget: number | null,
-): FaabSuggestion {
-  let pct: number;
-  let tier: string;
-  if (proj >= 15) {
-    pct = 45;
-    tier = "immediate every-week starter";
-  } else if (proj >= 12) {
-    pct = 28;
-    tier = "flex-worthy starter";
-  } else if (proj >= 9) {
-    pct = 14;
-    tier = "streamer / bye-week fill";
-  } else if (proj >= 6) {
-    pct = 6;
-    tier = "depth / upside stash";
-  } else {
-    pct = 2;
-    tier = "speculative add";
+// Winning claims across all of this user's leagues, tiered, as % of each
+// league's starting budget — the calibration set for faabRange.
+async function loadClaimSamples(userId: string): Promise<ClaimSample[]> {
+  const leagues = await prisma.league.findMany({
+    where: { connection: { userId }, faabBudget: { gt: 0 } },
+    include: { waiverClaims: { where: { won: true } } },
+  });
+  const samples: ClaimSample[] = [];
+  for (const lg of leagues) {
+    const ids = lg.waiverClaims.map((c) => c.sleeperId);
+    const values = new Map(
+      (
+        await prisma.tradeValue.findMany({
+          where: { sleeperId: { in: ids }, isDynasty: false, ppr: lg.ppr, numQbs: lg.numQbs, numTeams: lg.numTeams },
+          select: { sleeperId: true, value: true },
+        })
+      ).map((v) => [v.sleeperId, v.value]),
+    );
+    for (const c of lg.waiverClaims) {
+      samples.push({
+        leagueId: lg.id,
+        tier: faabTier(c.position, c.projAtClaim ?? 0, values.get(c.sleeperId) ?? 0, lg.numQbs),
+        pct: (100 * c.bid) / lg.faabBudget!,
+      });
+    }
   }
-  // Nudge for market momentum: hot risers cost a bit more, faders a bit less.
-  if (trend30 > 0) pct = Math.min(60, Math.round(pct * 1.15));
-  else if (trend30 < 0) pct = Math.max(1, Math.round(pct * 0.9));
-
-  const dollars = remainingBudget != null ? Math.max(1, Math.round((remainingBudget * pct) / 100)) : null;
-  return { pct, dollars, rationale: tier };
+  return samples;
 }
 
 export interface WaiverTarget {
@@ -59,7 +60,7 @@ export interface WaiverTarget {
   valueEstimated: boolean; // true = projection-derived estimate, not live market
   trend30: number;
   injuryStatus: string | null;
-  faab: FaabSuggestion;
+  faab: FaabAdvice | null; // null = league has no FAAB
 }
 
 export async function waiverTargets(
@@ -68,7 +69,7 @@ export async function waiverTargets(
 ): Promise<{ week: number; remainingBudget: number | null; targets: WaiverTarget[] }> {
   const team = await prisma.team.findUniqueOrThrow({
     where: { id: teamId },
-    include: { league: { include: { teams: { include: { roster: true } } } } },
+    include: { roster: true, league: { include: { teams: { include: { roster: true } }, connection: true } } },
   });
   const league = team.league;
   const state = await getNflState();
@@ -86,6 +87,39 @@ export async function waiverTargets(
   const projRows = await prisma.projection.findMany({ where: { season, week } });
   const consensus = blendProjections(projRows as unknown as ProjectionRow[]);
 
+  // FAAB calibration: this league's (and the user's other leagues') claim history.
+  const budget = league.faabBudget ?? 0;
+  let samples: ClaimSample[] = [];
+  if (budget > 0) {
+    const userLeagues = await prisma.league.findMany({
+      where: { connection: { userId: league.connection.userId }, platform: "sleeper" },
+      select: { id: true },
+    });
+    await ensureWaiverHistoryFresh(userLeagues.map((l) => l.id)).catch(() => {});
+    samples = await loadClaimSamples(league.connection.userId);
+  }
+
+  // Your optimal lineup this week, to tell "would start" pickups from depth.
+  const myPlayers = await prisma.player.findMany({
+    where: { sleeperId: { in: team.roster.map((r) => r.sleeperId).filter((x): x is string => !!x) } },
+  });
+  const myLineup = optimizeLineup(
+    myPlayers.map((p) => ({
+      sleeperId: p.sleeperId,
+      name: p.name,
+      position: p.position,
+      proj: injuryAdjustedProj(consensus.get(p.sleeperId)?.points ?? 0, p.injuryStatus),
+      sources: consensus.get(p.sleeperId)?.n ?? 0,
+    })),
+    starterSlots((league.rosterPositions as string[]) ?? []),
+  ).lineup;
+  // Weakest starter this player could replace (an empty eligible slot = 0).
+  const weakestStarterFor = (position: string): number | null => {
+    const eligible = myLineup.filter((a) => isEligible(a.slot, position));
+    if (eligible.length === 0) return null;
+    return Math.min(...eligible.map((a) => a.player?.proj ?? 0));
+  };
+
   const candidateIds = [...consensus.keys()].filter((id) => !rostered.has(id));
   const [players, values] = await Promise.all([
     prisma.player.findMany({ where: { sleeperId: { in: candidateIds } } }),
@@ -100,6 +134,13 @@ export async function waiverTargets(
     }),
   ]);
   const valueById = new Map(values.map((v) => [v.sleeperId, v]));
+
+  const faabAdvice = (position: string, proj: number, value: number): FaabAdvice | null => {
+    if (budget <= 0) return null;
+    const range = faabRange(faabTier(position, proj, value, league.numQbs), league.id, samples, budget, remainingBudget);
+    const need = faabNeed(proj, weakestStarterFor(position));
+    return { ...range, need, bid: bidForNeed(range, need) };
+  };
 
   const targets: WaiverTarget[] = players
     .filter((p) => STARTABLE.has(p.position))
@@ -122,7 +163,7 @@ export async function waiverTargets(
         valueEstimated: v?.source === "derived",
         trend30,
         injuryStatus: p.injuryStatus,
-        faab: faabSuggestion(proj, trend30, remainingBudget),
+        faab: faabAdvice(p.position, proj, v?.value ?? 0),
       };
     })
     .sort((a, b) => b.proj - a.proj || b.value - a.value)

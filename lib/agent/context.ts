@@ -54,7 +54,12 @@ export interface LeagueContext {
     marketValue: number;
     trend: number;
     injuryStatus: string | null;
-    suggestedFaab: string;
+    // Priced off this league's real winning bids: low = going rate, high = beats
+    // nearly any comparable claim. suggestedBid = high if he clearly starts for
+    // you, midpoint if a marginal upgrade, low if depth (see need).
+    faabRange: string | null;
+    suggestedBid: string | null;
+    need: "starts" | "marginal" | "depth" | null;
   }[];
   // Community context (Phase 4): YouTube items mentioning a rostered or
   // waiver-relevant player, most recent first. Empty until the refresh-news
@@ -185,7 +190,9 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       marketValue: t.value,
       trend: t.trend30,
       injuryStatus: t.injuryStatus,
-      suggestedFaab: t.faab.dollars != null ? `$${t.faab.dollars}` : `${t.faab.pct}%`,
+      faabRange: t.faab ? `$${t.faab.low}-$${t.faab.high}` : null,
+      suggestedBid: t.faab ? `$${t.faab.bid}` : null,
+      need: t.faab?.need ?? null,
     })),
     news: news.map((n) => ({
       source: n.source,

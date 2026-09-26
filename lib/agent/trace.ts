@@ -49,7 +49,7 @@ export function traceGather(ctx: LeagueContext) {
     );
   }
   log(`   • ${ctx.waiverTargets.length} waiver targets` + (ctx.waiverTargets[0]
-    ? ` (top: ${ctx.waiverTargets[0].player}, ${ctx.waiverTargets[0].proj} proj, ${ctx.waiverTargets[0].suggestedFaab})`
+    ? ` (top: ${ctx.waiverTargets[0].player}, ${ctx.waiverTargets[0].proj} proj, ${ctx.waiverTargets[0].suggestedBid ?? "no FAAB"})`
     : ""));
   if (ctx.survival) {
     const s = ctx.survival;

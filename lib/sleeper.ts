@@ -87,6 +87,20 @@ export interface SleeperState {
   display_week: number;
 }
 
+// Transactions for one league "leg" (week): waivers (won + failed claims, with
+// the FAAB bid), free-agent adds, trades.
+export interface SleeperTransaction {
+  transaction_id: string;
+  type: string; // "waiver" | "free_agent" | "trade" | ...
+  status: string; // "complete" | "failed"
+  adds?: Record<string, number> | null; // player_id -> roster_id
+  settings?: { waiver_bid?: number } | null;
+}
+
+export async function getTransactions(leagueId: string, week: number): Promise<SleeperTransaction[]> {
+  return getJson<SleeperTransaction[]>(`${API}/league/${leagueId}/transactions/${week}`);
+}
+
 export function getNflState(): Promise<SleeperState> {
   return getJson<SleeperState>(`${API}/state/nfl`);
 }
