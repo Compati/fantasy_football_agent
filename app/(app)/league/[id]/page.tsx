@@ -9,7 +9,7 @@ import { getSurvival } from "@/lib/features/survival";
 import { rosterOutlook } from "@/lib/features/roster";
 import { newsForPlayers } from "@/lib/features/news";
 import { propsForPlayers } from "@/lib/features/props";
-import { refreshSleeperLeague } from "@/lib/ingest/sleeper";
+import { refreshSleeperLeagueIfStale } from "@/lib/ingest/sleeper";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { TradeAnalyzer } from "./TradeAnalyzer";
 import { Recommendations } from "./Recommendations";
@@ -42,11 +42,9 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
     });
   let league = await loadLeague();
   if (!league) notFound();
-  if (league.platform === "sleeper" && Date.now() - league.updatedAt.getTime() > ROSTER_STALE_MS) {
-    // Best effort: if Sleeper is unreachable, render the last-synced roster.
-    const refreshed = await refreshSleeperLeague(league.id).then(loadLeague).catch(() => null);
-    if (refreshed) league = refreshed;
-  }
+  // Best effort: if Sleeper is unreachable, render the last-synced roster.
+  const refreshed = await refreshSleeperLeagueIfStale(league.id, ROSTER_STALE_MS).catch(() => false);
+  if (refreshed) league = (await loadLeague()) ?? league;
 
   const myTeam = league.teams.find((t) => t.isMine);
   if (!myTeam) {

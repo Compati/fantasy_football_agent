@@ -160,16 +160,19 @@ async function syncLeague(
   return teamCount;
 }
 
-// Re-pull a single league's rosters (adds/drops/lineup changes made in Sleeper).
-// The league page calls this when its copy is stale, so moves show up without
-// clicking "Refresh leagues" or waiting on the daily cron.
-export async function refreshSleeperLeague(leagueId: string): Promise<void> {
+// Re-pull a single league's rosters (adds/drops/lineup changes made in Sleeper)
+// if our copy is older than maxAgeMs. The league page calls this so moves show
+// up without clicking "Refresh leagues" or waiting on the daily cron. Returns
+// whether a refresh ran.
+export async function refreshSleeperLeagueIfStale(leagueId: string, maxAgeMs: number): Promise<boolean> {
   const league = await prisma.league.findUniqueOrThrow({
     where: { id: leagueId },
     include: { connection: true },
   });
-  if (league.platform !== "sleeper") return;
+  if (league.platform !== "sleeper") return false;
+  if (Date.now() - league.updatedAt.getTime() <= maxAgeMs) return false;
   await ensureCatalogFresh();
   const lg = await getLeague(league.externalId);
   await syncLeague(league.connection, lg, league.season);
+  return true;
 }
