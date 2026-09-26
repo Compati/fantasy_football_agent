@@ -43,23 +43,39 @@ export interface ClaimSample {
 }
 
 export interface RawClaim {
+  season: number;
   week: number;
   sleeperId: string;
   bid: number;
   won: boolean;
+  budget: number; // that season's starting budget
+}
+
+// Past seasons only count near the current week: bids shrink as budgets drain
+// (in these leagues the median winning bid falls from ~4-7% of budget in weeks
+// 1-4 to ~0-2% by week 9+), so a whole past season would drag early-season
+// ranges down. The window moves with the season.
+export const SEASON_WINDOW_WEEKS = 2;
+
+export function inSeasonalWindow(
+  claim: { season: number; week: number },
+  currentSeason: number,
+  currentWeek: number,
+): boolean {
+  return claim.season === currentSeason || Math.abs(claim.week - currentWeek) <= SEASON_WINDOW_WEEKS;
 }
 
 // Collapse one league's raw claims (winner + failed bids on the same player in
-// the same week) into one sample per won player. tierOf supplies the tier.
-export function claimSamples(
+// the same season/week) into one sample per won player. tierOf gets the
+// winning claim.
+export function claimSamples<T extends RawClaim>(
   leagueId: string,
-  budget: number,
-  claims: RawClaim[],
-  tierOf: (sleeperId: string, week: number) => FaabTier,
+  claims: T[],
+  tierOf: (winner: T) => FaabTier,
 ): ClaimSample[] {
-  const groups = new Map<string, RawClaim[]>();
+  const groups = new Map<string, T[]>();
   for (const c of claims) {
-    const k = `${c.week}|${c.sleeperId}`;
+    const k = `${c.season}|${c.week}|${c.sleeperId}`;
     groups.set(k, [...(groups.get(k) ?? []), c]);
   }
   const out: ClaimSample[] = [];
@@ -70,9 +86,9 @@ export function claimSamples(
     const runnerUp = others.length ? Math.max(...others) : null;
     out.push({
       leagueId,
-      tier: tierOf(winner.sleeperId, winner.week),
-      pct: (100 * winner.bid) / budget,
-      neededPct: runnerUp == null ? 0 : (100 * (runnerUp + 1)) / budget,
+      tier: tierOf(winner),
+      pct: (100 * winner.bid) / winner.budget,
+      neededPct: runnerUp == null ? 0 : (100 * (runnerUp + 1)) / winner.budget,
       contested: runnerUp != null,
     });
   }
@@ -207,9 +223,10 @@ export function faabNeed(proj: number, weakestStarter: number | null): FaabNeed 
 
 // starts -> high end, marginal -> midpoint, depth -> low end. A "hot" player
 // (trending adds across Sleeper) likely draws a committed bidder, so a marginal
-// upgrade you want gets the high end; depth stays low — fine to lose him.
+// upgrade leans up to the 3/4 point — not the top: a small upgrade isn't worth
+// the committed-bidder price. Depth stays low — fine to lose him.
 export function bidForNeed(range: { low: number; high: number }, need: FaabNeed, hot = false): number {
-  if (need === "starts" || (need === "marginal" && hot)) return range.high;
-  if (need === "marginal") return Math.round((range.low + range.high) / 2);
+  if (need === "starts") return range.high;
+  if (need === "marginal") return Math.round(range.low + (range.high - range.low) * (hot ? 0.75 : 0.5));
   return range.low;
 }

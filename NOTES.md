@@ -1,5 +1,19 @@
 # Dev log
 
+## 2026-09-26 (latest) — FAAB history from past seasons
+
+`refreshWaiverHistory` now walks Sleeper's `previous_league_id` chain and stores past FAAB seasons
+(fetched once — immutable; only the current season re-pulls). Escalated Calls 2024+2025 and Panini
+2025 added (~466 / 220 claims vs 35 / 34); Panini 2024 skipped (rolling waivers, all $0 bids);
+CS Guillotine is new this season. `WaiverClaim` gained `season`, `budget` (per season), `projAhead`.
+- **Seasonal window:** past seasons only count within ±2 weeks of the current week — winning bids
+  fall from ~4-7% of budget in wks 1-4 to ~0-2% by wk 9+ as budgets drain (checked on 2024/2025).
+- **Tiering** uses max(claim-week proj, mean of next 2 weeks) — catches role-change adds (Dobbins
+  4.9 → 11.2). Today's FantasyCalc value is only used for current-season claims.
+- Escalated's starter tier is genuinely pricey early (Stafford $124, Mayfield $102, Dobbins $100),
+  which made the "hot marginal → high end" rule suggest $100 for a ~1 pt upgrade → changed to the
+  3/4 point of the range.
+
 ## 2026-09-26 (later) — FAAB: losing bids + demand signal
 
 Losing bids showed most claims are uncontested (Escalated 12%, Panini 47%, Guillotine 63% — the

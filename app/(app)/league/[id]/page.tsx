@@ -361,8 +361,10 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
           FAAB range is priced off this league&apos;s own bids for comparable players: low = beats the
           casual interest (the typical runner-up bid, often $0 since most claims go uncontested; ties
           go to waiver priority), high = beats the committed bidders too (you need him this week).
-          Bid = high if he&apos;d clearly start for you (3+ pts over your weakest eligible starter) or is a
-          <span className="text-warn">hot</span> marginal upgrade, midpoint if marginal, low if depth.
+          Bid = high if he&apos;d clearly start for you (3+ pts over your weakest eligible starter),
+          midpoint if a marginal upgrade (3/4 of the way up if he&apos;s <span className="text-warn">hot</span>),
+          low if depth. Past seasons of this league count only for weeks near this one (bids shrink as
+          budgets drain).
           Hover a range for the basis.
           A <span className="font-mono">~</span> value is a projection-derived estimate (outside FantasyCalc&apos;s set).
         </p>
@@ -520,7 +522,7 @@ const FAAB_TIER_LABEL: Record<FaabAdvice["tier"], string> = {
 function faabTitle(f: FaabAdvice): string {
   const basis =
     f.basis === "league"
-      ? `this league's ${f.samples} winning bids`
+      ? `this league's ${f.samples} winning bids (this season + past seasons' weeks near this one)`
       : f.basis === "pooled"
         ? `${f.samples} winning bids across your leagues, scaled to this league's spending`
         : "defaults (no bid history yet)";

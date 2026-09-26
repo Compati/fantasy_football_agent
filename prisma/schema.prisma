@@ -285,21 +285,25 @@ model GameLine {
   @@unique([season, week, team])
 }
 
-// Every waiver claim in a league (won and failed), for calibrating FAAB bid
-// ranges on what the league actually pays (lib/features/faab.ts).
+// Every waiver claim in a league (won and failed), this season and past FAAB
+// seasons of the same league, for calibrating FAAB bid ranges on what the
+// league actually pays (lib/features/faab.ts).
 model WaiverClaim {
   id            String  @id @default(cuid())
   leagueId      String
   league        League  @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   transactionId String  @unique
+  season        Int // past seasons come from the league's previous_league_id chain
   week          Int
+  budget        Int // that season's starting FAAB budget
   sleeperId     String
   position      String
   bid           Int
   won           Boolean
   projAtClaim   Float? // Sleeper PPR projection for the claim's week
+  projAhead     Float? // mean projection for the next two weeks (role changes)
 
   updatedAt DateTime @updatedAt
 
-  @@index([leagueId])
+  @@index([leagueId, season])
 }

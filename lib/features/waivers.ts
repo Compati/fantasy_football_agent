@@ -7,7 +7,7 @@ import { getNflState, getTrendingAdds } from "@/lib/sleeper";
 import { blendProjections } from "@/lib/projections/consensus";
 import { injuryAdjustedProj } from "@/lib/features/injury";
 import type { ProjectionRow } from "@/lib/types";
-import { faabTier, faabRange, faabNeed, bidForNeed, claimSamples, type ClaimSample, type FaabRange, type FaabNeed } from "@/lib/features/faab";
+import { faabTier, faabRange, faabNeed, bidForNeed, claimSamples, inSeasonalWindow, type ClaimSample, type FaabRange, type FaabNeed } from "@/lib/features/faab";
 import { ensureWaiverHistoryFresh } from "@/lib/ingest/waiver-history";
 import { optimizeLineup } from "@/lib/features/startsit";
 import { starterSlots } from "@/lib/ingest/sleeper-transform";
@@ -22,9 +22,9 @@ export interface FaabAdvice extends FaabRange {
 }
 
 // Claims across all of this user's leagues (winners + the losing bids on the
-// same player), tiered, as % of each league's starting budget — the
-// calibration set for faabRange.
-async function loadClaimSamples(userId: string): Promise<ClaimSample[]> {
+// same player; current season plus past seasons near this week), tiered, as %
+// of that season's starting budget — the calibration set for faabRange.
+async function loadClaimSamples(userId: string, currentWeek: number): Promise<ClaimSample[]> {
   const leagues = await prisma.league.findMany({
     where: { connection: { userId }, faabBudget: { gt: 0 } },
     include: { waiverClaims: true },
@@ -40,12 +40,17 @@ async function loadClaimSamples(userId: string): Promise<ClaimSample[]> {
         })
       ).map((v) => [v.sleeperId, v.value]),
     );
-    const byKey = new Map(lg.waiverClaims.map((c) => [`${c.week}|${c.sleeperId}`, c]));
+    const claims = lg.waiverClaims.filter((c) => inSeasonalWindow(c, lg.season, currentWeek));
     samples.push(
-      ...claimSamples(lg.id, lg.faabBudget!, lg.waiverClaims, (sleeperId, week) => {
-        const c = byKey.get(`${week}|${sleeperId}`)!;
-        return faabTier(c.position, c.projAtClaim ?? 0, values.get(sleeperId) ?? 0, lg.numQbs);
-      }),
+      ...claimSamples(lg.id, claims, (c) =>
+        faabTier(
+          c.position,
+          Math.max(c.projAtClaim ?? 0, c.projAhead ?? 0),
+          // Today's market value only describes this season's pickups.
+          c.season === lg.season ? (values.get(c.sleeperId) ?? 0) : 0,
+          lg.numQbs,
+        ),
+      ),
     );
   }
   return samples;
@@ -98,7 +103,7 @@ export async function waiverTargets(
       select: { id: true },
     });
     await ensureWaiverHistoryFresh(userLeagues.map((l) => l.id)).catch(() => {});
-    samples = await loadClaimSamples(league.connection.userId);
+    samples = await loadClaimSamples(league.connection.userId, week);
   }
 
   // Demand: the most-added players across Sleeper right now.

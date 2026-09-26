@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { faabTier, faabRange, faabNeed, bidForNeed, claimSamples, leagueSpendFactor, percentile, type ClaimSample } from "@/lib/features/faab";
+import { faabTier, faabRange, faabNeed, bidForNeed, claimSamples, inSeasonalWindow, leagueSpendFactor, percentile, type ClaimSample } from "@/lib/features/faab";
 
 test("faabTier takes the higher of value tier and projection tier", () => {
   assert.equal(faabTier("WR", 8, 3000, 1), "impact"); // market value carries it
@@ -82,15 +82,18 @@ test("faabNeed + bidForNeed: clear upgrade -> high, marginal -> midpoint, else l
 });
 
 test("claimSamples pairs each winner with its runner-up; uncontested needs $0", () => {
+  const c = (week: number, sleeperId: string, bid: number, won: boolean, season = 2026) => ({
+    season, week, sleeperId, bid, won, budget: 100,
+  });
   const out = claimSamples(
     "A",
-    100,
     [
-      { week: 2, sleeperId: "p1", bid: 76, won: true },
-      { week: 2, sleeperId: "p1", bid: 27, won: false },
-      { week: 2, sleeperId: "p1", bid: 13, won: false },
-      { week: 2, sleeperId: "p2", bid: 32, won: true }, // nobody else bid
-      { week: 3, sleeperId: "p3", bid: 5, won: false }, // all-failed: no price signal
+      c(2, "p1", 76, true),
+      c(2, "p1", 27, false),
+      c(2, "p1", 13, false),
+      c(2, "p2", 32, true), // nobody else bid
+      c(2, "p2", 50, false, 2025), // same player+week, other season: separate claim
+      c(3, "p3", 5, false), // all-failed: no price signal
     ],
     () => "flex",
   );
@@ -103,6 +106,18 @@ test("claimSamples pairs each winner with its runner-up; uncontested needs $0", 
   assert.equal(p2.contested, false);
 });
 
+test("claimSamples prices each claim against its own season's budget", () => {
+  const out = claimSamples("A", [{ season: 2024, week: 1, sleeperId: "p", bid: 50, won: true, budget: 200 }], () => "flex");
+  assert.equal(out[0].pct, 25);
+});
+
+test("inSeasonalWindow keeps this season, and past seasons only near this week", () => {
+  assert.equal(inSeasonalWindow({ season: 2026, week: 1 }, 2026, 12), true);
+  assert.equal(inSeasonalWindow({ season: 2025, week: 5 }, 2026, 3), true);
+  assert.equal(inSeasonalWindow({ season: 2025, week: 6 }, 2026, 3), false);
+  assert.equal(inSeasonalWindow({ season: 2024, week: 10 }, 2026, 12), true);
+});
+
 test("faabRange low end tracks casual interest (runner-up), high end the winners", () => {
   // Winners overpaid: won at 20%, but the runner-up was at ~2% (or nobody).
   const samples = [s("A", "flex", 20, 2), s("A", "flex", 20, 0), s("A", "flex", 20, 3)];
@@ -112,8 +127,8 @@ test("faabRange low end tracks casual interest (runner-up), high end the winners
   assert.ok(Math.abs(r.contestedShare! - 2 / 3) < 1e-9);
 });
 
-test("bidForNeed: a hot marginal upgrade gets the high end; hot depth stays low", () => {
+test("bidForNeed: a hot marginal upgrade leans to the 3/4 point; hot depth stays low", () => {
   const range = { low: 10, high: 30 };
-  assert.equal(bidForNeed(range, "marginal", true), 30);
+  assert.equal(bidForNeed(range, "marginal", true), 25);
   assert.equal(bidForNeed(range, "depth", true), 10);
 });

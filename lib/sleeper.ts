@@ -30,7 +30,8 @@ export interface SleeperLeague {
   total_rosters: number;
   scoring_settings: Record<string, number>;
   roster_positions: string[]; // e.g. ["QB","RB","RB","WR","WR","FLEX","BN",...]
-  settings: Record<string, number>; // includes waiver_budget, etc.
+  settings: Record<string, number>; // includes waiver_budget, waiver_type (2 = FAAB), etc.
+  previous_league_id?: string | null; // last season's league ("0"/null if none)
 }
 
 export async function getUserLeagues(
