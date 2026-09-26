@@ -21,13 +21,11 @@ test("percentile interpolates", () => {
   assert.equal(percentile([], 0.5), 0);
 });
 
-// neededPct defaults to the winning pct (as if the runner-up bid just under it).
-const s = (leagueId: string, tier: ClaimSample["tier"], pct: number, neededPct = pct): ClaimSample => ({
+const s = (leagueId: string, tier: ClaimSample["tier"], pct: number, contested = true): ClaimSample => ({
   leagueId,
   tier,
   pct,
-  neededPct,
-  contested: neededPct > 0,
+  contested,
 });
 
 test("faabRange uses the league's own bids when it has enough of them", () => {
@@ -81,7 +79,7 @@ test("faabNeed + bidForNeed: clear upgrade -> high, marginal -> midpoint, else l
   assert.equal(bidForNeed(range, "depth"), 10);
 });
 
-test("claimSamples pairs each winner with its runner-up; uncontested needs $0", () => {
+test("claimSamples: one sample per won player, flagged contested if anyone else bid", () => {
   const c = (week: number, sleeperId: string, bid: number, won: boolean, season = 2026) => ({
     season, week, sleeperId, bid, won, budget: 100,
   });
@@ -99,10 +97,8 @@ test("claimSamples pairs each winner with its runner-up; uncontested needs $0", 
   );
   assert.equal(out.length, 2);
   const p1 = out.find((x) => x.pct === 76)!;
-  assert.equal(p1.neededPct, 28); // beat the $27 runner-up by $1
   assert.equal(p1.contested, true);
   const p2 = out.find((x) => x.pct === 32)!;
-  assert.equal(p2.neededPct, 0);
   assert.equal(p2.contested, false);
 });
 
@@ -118,12 +114,11 @@ test("inSeasonalWindow keeps this season, and past seasons only near this week",
   assert.equal(inSeasonalWindow({ season: 2024, week: 10 }, 2026, 12), true);
 });
 
-test("faabRange low end tracks casual interest (runner-up), high end the winners", () => {
-  // Winners overpaid: won at 20%, but the runner-up was at ~2% (or nobody).
-  const samples = [s("A", "flex", 20, 2), s("A", "flex", 20, 0), s("A", "flex", 20, 3)];
+test("faabRange: low = median winning bid, high = p80; carries the contest rate", () => {
+  const samples = [s("A", "flex", 2, true), s("A", "flex", 10, false), s("A", "flex", 20, true)];
   const r = faabRange("flex", "A", samples, 100, null);
-  assert.equal(r.low, 2);
-  assert.equal(r.high, 20);
+  assert.equal(r.low, 10);
+  assert.equal(r.high, 16);
   assert.ok(Math.abs(r.contestedShare! - 2 / 3) < 1e-9);
 });
 

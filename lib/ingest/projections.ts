@@ -49,16 +49,18 @@ async function replaceSource(
   return clean.length;
 }
 
-export async function refreshProjections(
-  season?: number,
-  week?: number,
-  ppr = 1,
-): Promise<ProjectionsIngestSummary> {
-  await ensureCatalogFresh();
-  const state = season && week ? null : await getNflState();
-  const s = season ?? Number(state!.season);
-  const w = week ?? (state!.week > 0 ? state!.week : 1);
+export interface SourceFetch {
+  validIds: Set<string>;
+  sleeper: ProjectionRow[];
+  espn: ProjectionRow[]; // DEF already rescaled onto Sleeper's scale
+  espnUnresolved: number;
+  cbs: ScrapedResult;
+  fftoday: ScrapedResult;
+}
 
+// Fetch every source for one week and resolve rows to sleeperIds, without
+// touching the DB. Shared by the ingest and the backtest.
+export async function fetchAllSources(s: number, w: number, ppr = 1): Promise<SourceFetch> {
   // Only keep projections for players we actually have (FK safety).
   const players = await prisma.player.findMany({
     select: { sleeperId: true, espnId: true, name: true, position: true, nflTeam: true },
@@ -95,25 +97,45 @@ export async function refreshProjections(
     getFftodayProjections(s, w, scrapedResolver).catch(() => emptyScraped),
   ]);
 
-  const sleeperN = await replaceSource("sleeper", s, w, sleeperRows, validIds);
   // ESPN's D/ST scoring runs well below Sleeper's; keep its ranking, use Sleeper's scale.
   const defIds = new Set(players.filter((p) => p.position === "DEF").map((p) => p.sleeperId));
-  const espnRows = scaleToReference(espnRes.rows, sleeperRows, defIds);
-  const espnN = await replaceSource("espn", s, w, espnRows, validIds);
+  return {
+    validIds,
+    sleeper: sleeperRows,
+    espn: scaleToReference(espnRes.rows, sleeperRows, defIds),
+    espnUnresolved: espnRes.unresolvedEspnIds,
+    cbs: cbsRes,
+    fftoday: fftRes,
+  };
+}
+
+export async function refreshProjections(
+  season?: number,
+  week?: number,
+  ppr = 1,
+): Promise<ProjectionsIngestSummary> {
+  await ensureCatalogFresh();
+  const state = season && week ? null : await getNflState();
+  const s = season ?? Number(state!.season);
+  const w = week ?? (state!.week > 0 ? state!.week : 1);
+
+  const f = await fetchAllSources(s, w, ppr);
+  const sleeperN = await replaceSource("sleeper", s, w, f.sleeper, f.validIds);
+  const espnN = await replaceSource("espn", s, w, f.espn, f.validIds);
   // A scrape that failed or came back empty (site down, markup changed, week not
   // published yet) keeps the previous rows rather than wiping that source.
-  const cbsN = cbsRes.rows.length ? await replaceSource("cbs", s, w, cbsRes.rows, validIds) : 0;
-  const fftN = fftRes.rows.length ? await replaceSource("fftoday", s, w, fftRes.rows, validIds) : 0;
+  const cbsN = f.cbs.rows.length ? await replaceSource("cbs", s, w, f.cbs.rows, f.validIds) : 0;
+  const fftN = f.fftoday.rows.length ? await replaceSource("fftoday", s, w, f.fftoday.rows, f.validIds) : 0;
 
   return {
     season: s,
     week: w,
     sleeper: sleeperN,
     espn: espnN,
-    espnUnresolved: espnRes.unresolvedEspnIds,
+    espnUnresolved: f.espnUnresolved,
     cbs: cbsN,
-    cbsUnresolved: cbsRes.unresolved,
+    cbsUnresolved: f.cbs.unresolved,
     fftoday: fftN,
-    fftodayUnresolved: fftRes.unresolved,
+    fftodayUnresolved: f.fftoday.unresolved,
   };
 }

@@ -1,11 +1,16 @@
-// Opponent context for start/sit: how friendly this week's matchup is, from two
-// signals the projections don't carry directly —
+// Opponent context for start/sit — shown as context, NOT used to make calls:
 //   1. Vegas implied team total (the market's expected points for the offense)
+//      -> drives the great..tough rating
 //   2. defense-vs-position: PPR points the opponent allows to that position
+//      -> shown on hover only
 //
-// The projection sources already account for matchups, so this is NOT applied
-// to projections (that would double-count). It labels each player's matchup
-// and breaks close start/sit calls. Pure functions here; DB wiring below them.
+// Backtest (scripts/backtest.ts matchup, 2025, ~10.8k close calls): when DvP
+// favored the projection underdog, the underdog won only 47-48% at every edge
+// threshold, while the projection favorite won 53.5%. The projections already
+// price the matchup, so leaning on DvP double-counts it and hurt decisions.
+// The Vegas half isn't backtested yet (no free historical lines; GameLine
+// snapshots now accumulate week by week), so it only labels, never breaks ties.
+// Pure functions here; DB wiring below them.
 
 import { prisma } from "@/lib/db";
 
@@ -107,8 +112,8 @@ export function matchupLabel(edge: number): MatchupLabel {
   return "neutral";
 }
 
-// A close call leans to the alternative only when its matchup is clearly
-// better — a few percent of noise shouldn't flip a projection edge.
+// A close call "leans" when one side's matchup is clearly better. Kept for the
+// backtest; NOT used by start/sit (see the header: DvP leans lost to projections).
 export const MATCHUP_LEAN_EDGE = 0.06;
 
 export function closeCallLean(starterEdge: number, alternativeEdge: number): "starter" | "alternative" | null {
@@ -160,7 +165,8 @@ export async function matchupsFor(
       impliedTotal = lineByTeam.get(line.opponent)?.impliedTotal ?? null;
       edge = -matchupEdge(impliedTotal, avgImplied, null, null);
     } else {
-      edge = matchupEdge(line.impliedTotal, avgImplied, d?.adjusted ?? null, dvpAvg.get(p.position) ?? null);
+      // Rating from the Vegas implied total only; DvP is context (see header).
+      edge = matchupEdge(line.impliedTotal, avgImplied, null, null);
     }
     out.set(p.sleeperId, {
       opponent: line.opponent,

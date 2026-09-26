@@ -26,7 +26,7 @@ export interface LeagueContext {
     recommendedLineup: { slot: string; player: string; proj: number; sources: number; opponent?: string | null; matchup?: string; impliedTotal?: number | null; oppRankVsPos?: number | null }[];
     shouldStart: { player: string; proj: number }[];
     shouldSit: { player: string; proj: number }[];
-    closeCalls: { starter: string; alternative: string; gap: number; matchupLean: string | null }[];
+    closeCalls: { starter: string; alternative: string; gap: number }[];
   };
   injuries: { player: string; status: string; starting: boolean }[];
   // Present only for Guillotine (play-the-field) leagues — no head-to-head; the
@@ -157,7 +157,6 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
         starter: c.starter.name,
         alternative: c.alternative.name,
         gap: c.gap,
-        matchupLean: c.lean === "alternative" ? c.alternative.name : c.lean === "starter" ? c.starter.name : null,
       })),
     },
     injuries: ss.injuryAlerts,

@@ -10,7 +10,7 @@ import { isEligible, slotRestrictiveness } from "@/lib/features/eligibility";
 import { UNAVAILABLE_STATUS } from "@/lib/features/injury";
 import { playerDetailMap } from "@/lib/players";
 import type { ProjectionRow } from "@/lib/types";
-import { matchupsFor, closeCallLean, type PlayerMatchup } from "@/lib/features/opponent";
+import { matchupsFor, type PlayerMatchup } from "@/lib/features/opponent";
 import { ensureOpponentDataFresh } from "@/lib/ingest/opponent";
 
 export interface LineupPlayer {
@@ -71,8 +71,7 @@ export interface StartSitResult {
   lineup: SlotAssignment[]; // recommended optimal lineup
   start: LineupPlayer[]; // move these into the lineup
   sit: LineupPlayer[]; // move these to the bench
-  // lean: which side the matchup favors when it clearly differs (tiebreaker).
-  closeCalls: { starter: LineupPlayer; alternative: LineupPlayer; gap: number; lean: "starter" | "alternative" | null }[];
+  closeCalls: { starter: LineupPlayer; alternative: LineupPlayer; gap: number }[];
   injuryAlerts: { player: string; status: string; starting: boolean }[]; // rostered players with a designation
 }
 
@@ -151,9 +150,7 @@ export async function startSitForTeam(
       if (!isEligible(a.slot, b.position)) continue;
       const gap = a.player.proj - b.proj;
       if (gap >= 0 && gap < CLOSE_CALL_GAP) {
-        const lean =
-          a.player.matchup && b.matchup ? closeCallLean(a.player.matchup.edge, b.matchup.edge) : null;
-        closeCalls.push({ starter: a.player, alternative: b, gap: Math.round(gap * 100) / 100, lean });
+        closeCalls.push({ starter: a.player, alternative: b, gap: Math.round(gap * 100) / 100 });
       }
     }
   }

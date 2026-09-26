@@ -283,15 +283,7 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
             Close calls:{" "}
             {startSit.closeCalls
               .slice(0, 3)
-              .map(
-                (c) =>
-                  `${c.starter.name} over ${c.alternative.name} (+${c.gap})` +
-                  (c.lean === "alternative"
-                    ? ` — matchup favors ${c.alternative.name}`
-                    : c.lean === "starter"
-                      ? " — matchup agrees"
-                      : ""),
-              )
+              .map((c) => `${c.starter.name} over ${c.alternative.name} (+${c.gap})`)
               .join(" · ")}
           </p>
         )}
@@ -358,9 +350,9 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
           </table>
         </div>
         <p className="mt-2 text-xs text-muted">
-          FAAB range is priced off this league&apos;s own bids for comparable players: low = beats the
-          casual interest (the typical runner-up bid, often $0 since most claims go uncontested; ties
-          go to waiver priority), high = beats the committed bidders too (you need him this week).
+          FAAB range is priced off this league&apos;s own winning bids for comparable players: low = the
+          median winning bid (won about half the time when replayed on last season), high = the 80th
+          percentile (won ~80%; you need him this week).
           Bid = high if he&apos;d clearly start for you (3+ pts over your weakest eligible starter),
           midpoint if a marginal upgrade (3/4 of the way up if he&apos;s <span className="text-warn">hot</span>),
           low if depth. Past seasons of this league count only for weeks near this one (bids shrink as
@@ -498,8 +490,8 @@ function MatchupTag({ m, position }: { m: PlayerMatchup; position: string }) {
   if (!m.opponent) return <span className="text-xs text-muted">bye</span>;
   const detail = [
     m.impliedTotal != null ? `${position === "DEF" ? "Opponent" : "Team"} implied total ${m.impliedTotal}` : null,
-    m.dvpRank != null ? `${m.opponent} allows the #${m.dvpRank} most pts to ${position}s` : null,
-    `edge ${m.edge >= 0 ? "+" : ""}${Math.round(m.edge * 100)}%`,
+    `rating edge ${m.edge >= 0 ? "+" : ""}${Math.round(m.edge * 100)}% (from the implied total)`,
+    m.dvpRank != null ? `${m.opponent} allows the #${m.dvpRank} most pts to ${position}s (context only)` : null,
   ]
     .filter(Boolean)
     .join(" · ");

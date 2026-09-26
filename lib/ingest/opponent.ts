@@ -6,8 +6,7 @@
 //     date, from Sleeper's weekly stats (free).
 
 import { prisma } from "@/lib/db";
-import { getJson } from "@/lib/http";
-import { getSchedule } from "@/lib/sleeper";
+import { getSchedule, getWeeklyStats } from "@/lib/sleeper";
 import { oddsApiConfigured, fetchGameLines } from "@/lib/odds";
 import { teamAbbr } from "@/lib/teams";
 import { computeDefenseVsPosition, impliedTotals, DVP_POSITIONS, type WeeklyPoints } from "@/lib/features/opponent";
@@ -15,22 +14,13 @@ import { computeDefenseVsPosition, impliedTotals, DVP_POSITIONS, type WeeklyPoin
 // Re-pull when older than this (the league page calls ensureOpponentDataFresh).
 const STALE_MS = 12 * 60 * 60 * 1000;
 
-interface SleeperStatRow {
-  week: number;
-  team: string | null;
-  opponent: string | null;
-  stats?: { pts_ppr?: number | null };
-}
-
 export async function refreshDefenseVsPosition(season: number, week: number): Promise<number> {
   const throughWeek = week - 1;
   if (throughWeek < 1) return 0;
   const rows: WeeklyPoints[] = [];
   for (let w = 1; w <= throughWeek; w++) {
     for (const position of DVP_POSITIONS) {
-      const data = await getJson<SleeperStatRow[]>(
-        `https://api.sleeper.com/stats/nfl/${season}/${w}?season_type=regular&position[]=${position}`,
-      );
+      const data = await getWeeklyStats(season, w, position);
       for (const r of data) {
         const pts = r.stats?.pts_ppr;
         if (r.opponent && pts != null) rows.push({ week: w, opponent: r.opponent, position, points: pts });

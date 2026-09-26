@@ -1,5 +1,22 @@
 # Dev log
 
+## 2026-09-27 — backtest (`scripts/backtest.ts projections|matchup|faab`) + two corrections
+
+- **Projections, 2026 wks 1-2 (453 player-weeks, all 4 sources):** 4-source trimmed blend MAE
+  4.96 / pair-order 67.0% vs old Sleeper+ESPN 5.06 / 65.8% → keep. CBS alone best (4.58 / 70.9%)
+  but its past-week pages may include post-kickoff updates; the backtest now prefers our stored
+  pre-game snapshot when a week has all 4 sources (wk3+) — re-check CBS then before reweighting.
+  Close pairs (<2 pts) ≈52-53% for every method. DEF: ESPN adds nothing measurable (n=63).
+- **Matchup (DvP half), 2025 wks 3-17, 10.8k close calls:** projection favorite won 53.5%; when DvP
+  favored the underdog, the underdog won only 47-48% at every edge threshold → **removed the
+  close-call "matchup favors X" lean**; rating now from the Vegas implied total only, DvP shown as
+  context. Advisor told not to move players on matchup. Vegas half untested (GameLine snapshots
+  accumulate from wk3 — backtest later).
+- **FAAB, 2025 replayed week by week with only prior data:** runner-up-based low end won ~3%
+  (a listed player almost always draws a real bid) → **reverted low to median winning bid**:
+  low wins 54-66%, high (p80) 78-86%. contestedShare kept as context.
+- FFToday retry now 2 retries (4s, 10s) — back-to-back weekly pulls tripped its rate limit.
+
 ## 2026-09-26 (latest) — FAAB history from past seasons
 
 `refreshWaiverHistory` now walks Sleeper's `previous_league_id` chain and stores past FAAB seasons

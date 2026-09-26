@@ -98,6 +98,18 @@ export interface SleeperTransaction {
   settings?: { waiver_bid?: number } | null;
 }
 
+// Actual weekly results for one position: team, opponent faced, PPR points.
+export interface WeeklyStat {
+  player_id: string;
+  team: string | null;
+  opponent: string | null;
+  stats?: { pts_ppr?: number | null; gp?: number | null };
+}
+
+export async function getWeeklyStats(season: number, week: number, position: string): Promise<WeeklyStat[]> {
+  return getJson<WeeklyStat[]>(`${DATA}/stats/nfl/${season}/${week}?season_type=regular&position[]=${position}`);
+}
+
 // Most-added players across all of Sleeper over the lookback window — a live
 // demand signal for waiver competition.
 export async function getTrendingAdds(lookbackHours = 48, limit = 50): Promise<{ player_id: string; count: number }[]> {

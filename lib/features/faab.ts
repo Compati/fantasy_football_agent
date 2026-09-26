@@ -3,14 +3,16 @@
 //
 // Every claim (won and lost) is tiered by player quality, and bids are
 // expressed as % of the league's STARTING budget (how leagues price players,
-// independent of what any one manager has left). Losing bids matter: most
-// claims are uncontested and winners routinely overpay the runner-up, so the
-// winning bid measures the most COMMITTED manager while the runner-up measures
-// CASUAL interest. For a waiver target:
-//   low  = median "beat the runner-up" price (runner-up + $1, $0 if nobody
-//          else bid) -> wins unless someone really wants him ("not really needed")
-//   high = 80th-percentile winning bid -> beats committed bidders too
-//          ("I need him in my lineup this week")
+// independent of what any one manager has left). For a waiver target:
+//   low  = median winning bid          -> wins about half the time
+//                                          ("nice to have, not really needed")
+//   high = 80th-percentile winning bid -> wins ~80% of the time
+//                                          ("I need him in my lineup this week")
+// Backtested (scripts/backtest.ts faab, 2025 replayed week by week): low won
+// 54-66% of claims, high 78-86%. A runner-up-based low end ("beat the casual
+// interest", often $0) was tried and won only ~3%: a player worth listing
+// almost always draws at least one real bid. Losing bids still feed
+// contestedShare, shown as context.
 // p80 not p90: with samples this small the top decile is one-off overpays
 // (hype rookies, handcuff panic), not what it takes to win a normal claim.
 // A league with fewer than MIN_SAMPLES claims in a tier borrows pooled prices:
@@ -38,7 +40,6 @@ export interface ClaimSample {
   leagueId: string;
   tier: FaabTier;
   pct: number; // winning bid as % of the league's starting budget
-  neededPct: number; // runner-up bid + $1 as % of budget (0 if uncontested)
   contested: boolean; // another manager also bid on him
 }
 
@@ -82,14 +83,12 @@ export function claimSamples<T extends RawClaim>(
   for (const group of groups.values()) {
     const winner = group.find((c) => c.won);
     if (!winner) continue; // every claim failed (e.g. nobody had room) — no price signal
-    const others = group.filter((c) => c !== winner).map((c) => c.bid);
-    const runnerUp = others.length ? Math.max(...others) : null;
+    const contested = group.some((c) => c !== winner);
     out.push({
       leagueId,
       tier: tierOf(winner),
       pct: (100 * winner.bid) / winner.budget,
-      neededPct: runnerUp == null ? 0 : (100 * (runnerUp + 1)) / winner.budget,
-      contested: runnerUp != null,
+      contested,
     });
   }
   return out;
@@ -155,7 +154,7 @@ function tierPrice(tier: FaabTier, leagueId: string, samples: ClaimSample[]): Ti
   const own = samples.filter((s) => s.leagueId === leagueId && s.tier === tier);
   if (own.length >= MIN_SAMPLES) {
     return {
-      lowPct: percentile(own.map((s) => s.neededPct), 0.5),
+      lowPct: percentile(own.map((s) => s.pct), 0.5),
       highPct: percentile(own.map((s) => s.pct), HIGH_PERCENTILE),
       basis: "league",
       n: own.length,
@@ -172,7 +171,7 @@ function tierPrice(tier: FaabTier, leagueId: string, samples: ClaimSample[]): Ti
     const f = factorOf(leagueId);
     const norm = (pick: (x: ClaimSample) => number) => pooled.map((x) => pick(x) / factorOf(x.leagueId));
     return {
-      lowPct: percentile(norm((x) => x.neededPct), 0.5) * f,
+      lowPct: percentile(norm((x) => x.pct), 0.5) * f,
       highPct: percentile(norm((x) => x.pct), HIGH_PERCENTILE) * f,
       basis: "pooled",
       n: pooled.length,

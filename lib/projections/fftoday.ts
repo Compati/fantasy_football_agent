@@ -45,18 +45,21 @@ export function parseFftodayPage(html: string, position: string): ScrapedProject
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// FFToday 403s bursts of parallel requests, so pages are fetched one at a time
-// with a short gap, and a failed page gets one slower retry. ~9 pages total.
+// FFToday 403s bursts of requests, so pages are fetched one at a time with a
+// short gap, and a failed page is retried with growing waits (back-to-back
+// weekly pulls can trip it for several seconds). ~9 pages per week.
 const PAGE_GAP_MS = 600;
-const RETRY_WAIT_MS = 4_000;
+const RETRY_WAITS_MS = [4_000, 10_000];
 
 async function fetchPage(url: string): Promise<string> {
-  try {
-    return await getText(url);
-  } catch {
-    await sleep(RETRY_WAIT_MS);
-    return getText(url);
+  for (const wait of RETRY_WAITS_MS) {
+    try {
+      return await getText(url);
+    } catch {
+      await sleep(wait);
+    }
   }
+  return getText(url);
 }
 
 export async function getFftodayProjections(
