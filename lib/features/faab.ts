@@ -1,12 +1,16 @@
 // FAAB bid ranges calibrated on what each league actually pays. Pure + tested;
 // the claim history comes from lib/ingest/waiver-history.ts.
 //
-// Every claim (won and lost) is tiered by player quality, and winning bids are
+// Every claim (won and lost) is tiered by player quality, and bids are
 // expressed as % of the league's STARTING budget (how leagues price players,
-// independent of what any one manager has left). For a waiver target:
-//   low  = median winning bid in its tier  -> the going rate ("nice to have")
-//   high = 80th-percentile winning bid     -> beats nearly every comparable claim
-//                                             ("I need him in my lineup this week")
+// independent of what any one manager has left). Losing bids matter: most
+// claims are uncontested and winners routinely overpay the runner-up, so the
+// winning bid measures the most COMMITTED manager while the runner-up measures
+// CASUAL interest. For a waiver target:
+//   low  = median "beat the runner-up" price (runner-up + $1, $0 if nobody
+//          else bid) -> wins unless someone really wants him ("not really needed")
+//   high = 80th-percentile winning bid -> beats committed bidders too
+//          ("I need him in my lineup this week")
 // p80 not p90: with samples this small the top decile is one-off overpays
 // (hype rookies, handcuff panic), not what it takes to win a normal claim.
 // A league with fewer than MIN_SAMPLES claims in a tier borrows pooled prices:
@@ -34,6 +38,45 @@ export interface ClaimSample {
   leagueId: string;
   tier: FaabTier;
   pct: number; // winning bid as % of the league's starting budget
+  neededPct: number; // runner-up bid + $1 as % of budget (0 if uncontested)
+  contested: boolean; // another manager also bid on him
+}
+
+export interface RawClaim {
+  week: number;
+  sleeperId: string;
+  bid: number;
+  won: boolean;
+}
+
+// Collapse one league's raw claims (winner + failed bids on the same player in
+// the same week) into one sample per won player. tierOf supplies the tier.
+export function claimSamples(
+  leagueId: string,
+  budget: number,
+  claims: RawClaim[],
+  tierOf: (sleeperId: string, week: number) => FaabTier,
+): ClaimSample[] {
+  const groups = new Map<string, RawClaim[]>();
+  for (const c of claims) {
+    const k = `${c.week}|${c.sleeperId}`;
+    groups.set(k, [...(groups.get(k) ?? []), c]);
+  }
+  const out: ClaimSample[] = [];
+  for (const group of groups.values()) {
+    const winner = group.find((c) => c.won);
+    if (!winner) continue; // every claim failed (e.g. nobody had room) — no price signal
+    const others = group.filter((c) => c !== winner).map((c) => c.bid);
+    const runnerUp = others.length ? Math.max(...others) : null;
+    out.push({
+      leagueId,
+      tier: tierOf(winner.sleeperId, winner.week),
+      pct: (100 * winner.bid) / budget,
+      neededPct: runnerUp == null ? 0 : (100 * (runnerUp + 1)) / budget,
+      contested: runnerUp != null,
+    });
+  }
+  return out;
 }
 
 // % of starting budget, used only when there is no history at all.
@@ -78,6 +121,7 @@ export interface FaabRange {
   high: number; // dollars
   basis: "league" | "pooled" | "default";
   samples: number; // comparable winning claims behind the range
+  contestedShare: number | null; // share of those claims with a competing bid
 }
 
 interface TierPrice {
@@ -85,13 +129,22 @@ interface TierPrice {
   highPct: number;
   basis: FaabRange["basis"];
   n: number;
+  contestedShare: number | null;
 }
+
+const share = (xs: ClaimSample[]) => (xs.length ? xs.filter((x) => x.contested).length / xs.length : null);
 
 // One tier's price in % of starting budget, before tier ordering is enforced.
 function tierPrice(tier: FaabTier, leagueId: string, samples: ClaimSample[]): TierPrice {
-  const own = samples.filter((s) => s.leagueId === leagueId && s.tier === tier).map((s) => s.pct);
+  const own = samples.filter((s) => s.leagueId === leagueId && s.tier === tier);
   if (own.length >= MIN_SAMPLES) {
-    return { lowPct: percentile(own, 0.5), highPct: percentile(own, HIGH_PERCENTILE), basis: "league", n: own.length };
+    return {
+      lowPct: percentile(own.map((s) => s.neededPct), 0.5),
+      highPct: percentile(own.map((s) => s.pct), HIGH_PERCENTILE),
+      basis: "league",
+      n: own.length,
+      contestedShare: share(own),
+    };
   }
   const pooled = samples.filter((s) => s.tier === tier);
   if (pooled.length >= MIN_SAMPLES) {
@@ -100,16 +153,17 @@ function tierPrice(tier: FaabTier, leagueId: string, samples: ClaimSample[]): Ti
       if (!factors.has(id)) factors.set(id, leagueSpendFactor(id, samples));
       return factors.get(id)!;
     };
-    const normalized = pooled.map((x) => x.pct / factorOf(x.leagueId));
     const f = factorOf(leagueId);
+    const norm = (pick: (x: ClaimSample) => number) => pooled.map((x) => pick(x) / factorOf(x.leagueId));
     return {
-      lowPct: percentile(normalized, 0.5) * f,
-      highPct: percentile(normalized, HIGH_PERCENTILE) * f,
+      lowPct: percentile(norm((x) => x.neededPct), 0.5) * f,
+      highPct: percentile(norm((x) => x.pct), HIGH_PERCENTILE) * f,
       basis: "pooled",
       n: pooled.length,
+      contestedShare: share(pooled),
     };
   }
-  return { lowPct: DEFAULT_PCT[tier].low, highPct: DEFAULT_PCT[tier].high, basis: "default", n: 0 };
+  return { lowPct: DEFAULT_PCT[tier].low, highPct: DEFAULT_PCT[tier].high, basis: "default", n: 0, contestedShare: null };
 }
 
 export function faabRange(
@@ -135,7 +189,7 @@ export function faabRange(
   const cap = remainingBudget ?? startingBudget;
   const low = Math.min(cap, Math.round((startingBudget * lowPct) / 100));
   const high = Math.min(cap, Math.max(low + 1, Math.round((startingBudget * highPct) / 100)));
-  return { tier, low, high, basis: own.basis, samples: own.n };
+  return { tier, low, high, basis: own.basis, samples: own.n, contestedShare: own.contestedShare };
 }
 
 // How badly you need him this week, from his projection vs the weakest starter
@@ -151,9 +205,11 @@ export function faabNeed(proj: number, weakestStarter: number | null): FaabNeed 
   return "depth";
 }
 
-// starts -> high end, marginal -> midpoint, depth -> low end.
-export function bidForNeed(range: { low: number; high: number }, need: FaabNeed): number {
-  if (need === "starts") return range.high;
+// starts -> high end, marginal -> midpoint, depth -> low end. A "hot" player
+// (trending adds across Sleeper) likely draws a committed bidder, so a marginal
+// upgrade you want gets the high end; depth stays low — fine to lose him.
+export function bidForNeed(range: { low: number; high: number }, need: FaabNeed, hot = false): number {
+  if (need === "starts" || (need === "marginal" && hot)) return range.high;
   if (need === "marginal") return Math.round((range.low + range.high) / 2);
   return range.low;
 }

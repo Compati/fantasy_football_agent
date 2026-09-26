@@ -1,5 +1,20 @@
 # Dev log
 
+## 2026-09-26 (later) — FAAB: losing bids + demand signal
+
+Losing bids showed most claims are uncontested (Escalated 12%, Panini 47%, Guillotine 63% — the
+eliminated-roster frenzies) and winners routinely overpay the runner-up (Saylors $101 vs $6). So the
+winning bid measures the most *committed* manager, the runner-up measures *casual* interest:
+- **low** = median of "beat the runner-up" (runner-up + $1; $0 if uncontested) — often $0 now,
+  which matches the data (all 3 leagues have `waiver_bid_min` 0; ties go to waiver priority).
+- **high** = p80 winning bid (unchanged).
+- `claimSamples()` groups raw claims per (week, player); all-failed groups carry no price signal.
+- Range carries `contestedShare` (shown on hover, passed to the advisor).
+- **Hot** = in Sleeper's top-50 trending adds (48h, `getTrendingAdds`) → expect a committed bidder:
+  a hot *marginal* upgrade bids the high end; depth stays low (fine to lose him).
+Known quirk: tier high ends aren't monotonic (e.g. Escalated flex high $41 > pooled starter high
+$31) — carrying highs upward spread outliers, so left as-is.
+
 ## 2026-09-26 — FAAB bids calibrated on real league bids
 
 The old `faabSuggestion` bid a flat % of *remaining* budget by projection tier (45% for 15+ proj)

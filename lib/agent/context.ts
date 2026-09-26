@@ -60,6 +60,8 @@ export interface LeagueContext {
     faabRange: string | null;
     suggestedBid: string | null;
     need: "starts" | "marginal" | "depth" | null;
+    hotAdd: boolean; // top trending add across Sleeper -> likely a committed bidder
+    contestedShare: number | null; // how often comparable claims here drew a competing bid
   }[];
   // Community context (Phase 4): YouTube items mentioning a rostered or
   // waiver-relevant player, most recent first. Empty until the refresh-news
@@ -193,6 +195,8 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       faabRange: t.faab ? `$${t.faab.low}-$${t.faab.high}` : null,
       suggestedBid: t.faab ? `$${t.faab.bid}` : null,
       need: t.faab?.need ?? null,
+      hotAdd: t.faab?.hot ?? false,
+      contestedShare: t.faab?.contestedShare != null ? Math.round(t.faab.contestedShare * 100) / 100 : null,
     })),
     news: news.map((n) => ({
       source: n.source,

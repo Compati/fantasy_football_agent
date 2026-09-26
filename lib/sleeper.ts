@@ -97,6 +97,12 @@ export interface SleeperTransaction {
   settings?: { waiver_bid?: number } | null;
 }
 
+// Most-added players across all of Sleeper over the lookback window — a live
+// demand signal for waiver competition.
+export async function getTrendingAdds(lookbackHours = 48, limit = 50): Promise<{ player_id: string; count: number }[]> {
+  return getJson(`${API}/players/nfl/trending/add?lookback_hours=${lookbackHours}&limit=${limit}`);
+}
+
 export async function getTransactions(leagueId: string, week: number): Promise<SleeperTransaction[]> {
   return getJson<SleeperTransaction[]>(`${API}/league/${leagueId}/transactions/${week}`);
 }

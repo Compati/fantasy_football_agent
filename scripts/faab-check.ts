@@ -15,7 +15,7 @@ async function main() {
       const f = x.faab;
       console.log(
         `  ${x.name.padEnd(22)} ${x.position.padEnd(3)} ${String(x.proj).padStart(5)}  ` +
-          (f ? `${f.tier.padEnd(7)} $${f.low}-$${f.high}  bid $${f.bid} (${f.need})  [${f.basis}, n=${f.samples}]` : "no FAAB"),
+          (f ? `${f.tier.padEnd(7)} $${f.low}-$${f.high}  bid $${f.bid} (${f.need}${f.hot ? ", HOT" : ""})  [${f.basis}, n=${f.samples}, contested ${f.contestedShare == null ? "?" : Math.round(f.contestedShare * 100) + "%"}]` : "no FAAB"),
       );
     }
   }

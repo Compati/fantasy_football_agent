@@ -3,11 +3,11 @@
 // actually pays (lib/features/faab.ts).
 
 import { prisma } from "@/lib/db";
-import { getNflState } from "@/lib/sleeper";
+import { getNflState, getTrendingAdds } from "@/lib/sleeper";
 import { blendProjections } from "@/lib/projections/consensus";
 import { injuryAdjustedProj } from "@/lib/features/injury";
 import type { ProjectionRow } from "@/lib/types";
-import { faabTier, faabRange, faabNeed, bidForNeed, type ClaimSample, type FaabRange, type FaabNeed } from "@/lib/features/faab";
+import { faabTier, faabRange, faabNeed, bidForNeed, claimSamples, type ClaimSample, type FaabRange, type FaabNeed } from "@/lib/features/faab";
 import { ensureWaiverHistoryFresh } from "@/lib/ingest/waiver-history";
 import { optimizeLineup } from "@/lib/features/startsit";
 import { starterSlots } from "@/lib/ingest/sleeper-transform";
@@ -18,14 +18,16 @@ const STARTABLE = new Set(["QB", "RB", "WR", "TE", "K", "DEF"]);
 export interface FaabAdvice extends FaabRange {
   bid: number; // high end if he clearly starts for you, midpoint if marginal, else low
   need: FaabNeed;
+  hot: boolean; // top trending add across Sleeper -> expect a committed bidder
 }
 
-// Winning claims across all of this user's leagues, tiered, as % of each
-// league's starting budget — the calibration set for faabRange.
+// Claims across all of this user's leagues (winners + the losing bids on the
+// same player), tiered, as % of each league's starting budget — the
+// calibration set for faabRange.
 async function loadClaimSamples(userId: string): Promise<ClaimSample[]> {
   const leagues = await prisma.league.findMany({
     where: { connection: { userId }, faabBudget: { gt: 0 } },
-    include: { waiverClaims: { where: { won: true } } },
+    include: { waiverClaims: true },
   });
   const samples: ClaimSample[] = [];
   for (const lg of leagues) {
@@ -38,13 +40,13 @@ async function loadClaimSamples(userId: string): Promise<ClaimSample[]> {
         })
       ).map((v) => [v.sleeperId, v.value]),
     );
-    for (const c of lg.waiverClaims) {
-      samples.push({
-        leagueId: lg.id,
-        tier: faabTier(c.position, c.projAtClaim ?? 0, values.get(c.sleeperId) ?? 0, lg.numQbs),
-        pct: (100 * c.bid) / lg.faabBudget!,
-      });
-    }
+    const byKey = new Map(lg.waiverClaims.map((c) => [`${c.week}|${c.sleeperId}`, c]));
+    samples.push(
+      ...claimSamples(lg.id, lg.faabBudget!, lg.waiverClaims, (sleeperId, week) => {
+        const c = byKey.get(`${week}|${sleeperId}`)!;
+        return faabTier(c.position, c.projAtClaim ?? 0, values.get(sleeperId) ?? 0, lg.numQbs);
+      }),
+    );
   }
   return samples;
 }
@@ -99,6 +101,11 @@ export async function waiverTargets(
     samples = await loadClaimSamples(league.connection.userId);
   }
 
+  // Demand: the most-added players across Sleeper right now.
+  const hotIds = new Set(
+    budget > 0 ? (await getTrendingAdds().catch(() => [])).map((t) => t.player_id) : [],
+  );
+
   // Your optimal lineup this week, to tell "would start" pickups from depth.
   const myPlayers = await prisma.player.findMany({
     where: { sleeperId: { in: team.roster.map((r) => r.sleeperId).filter((x): x is string => !!x) } },
@@ -135,11 +142,12 @@ export async function waiverTargets(
   ]);
   const valueById = new Map(values.map((v) => [v.sleeperId, v]));
 
-  const faabAdvice = (position: string, proj: number, value: number): FaabAdvice | null => {
+  const faabAdvice = (sleeperId: string, position: string, proj: number, value: number): FaabAdvice | null => {
     if (budget <= 0) return null;
     const range = faabRange(faabTier(position, proj, value, league.numQbs), league.id, samples, budget, remainingBudget);
     const need = faabNeed(proj, weakestStarterFor(position));
-    return { ...range, need, bid: bidForNeed(range, need) };
+    const hot = hotIds.has(sleeperId);
+    return { ...range, need, hot, bid: bidForNeed(range, need, hot) };
   };
 
   const targets: WaiverTarget[] = players
@@ -163,7 +171,7 @@ export async function waiverTargets(
         valueEstimated: v?.source === "derived",
         trend30,
         injuryStatus: p.injuryStatus,
-        faab: faabAdvice(p.position, proj, v?.value ?? 0),
+        faab: faabAdvice(p.sleeperId, p.position, proj, v?.value ?? 0),
       };
     })
     .sort((a, b) => b.proj - a.proj || b.value - a.value)

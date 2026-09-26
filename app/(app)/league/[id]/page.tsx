@@ -342,6 +342,11 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
                       <>
                         <span className={t.faab.need === "starts" ? "font-medium" : ""}>${t.faab.bid}</span>
                         <span className="ml-1 text-xs text-muted">{t.faab.need}</span>
+                        {t.faab.hot && (
+                          <span className="ml-1 text-xs text-warn" title="Top trending add across Sleeper — expect a committed bidder">
+                            hot
+                          </span>
+                        )}
                       </>
                     ) : (
                       "—"
@@ -353,10 +358,12 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
           </table>
         </div>
         <p className="mt-2 text-xs text-muted">
-          FAAB range is priced off this league&apos;s own winning bids for comparable players: low = the
-          going rate (nice to have), high = beats nearly every comparable claim (you need him this
-          week). Bid = high if he&apos;d clearly start for you (3+ pts over your weakest eligible starter),
-          midpoint if he&apos;s a marginal upgrade, low if he&apos;s depth. Hover a range for the basis.
+          FAAB range is priced off this league&apos;s own bids for comparable players: low = beats the
+          casual interest (the typical runner-up bid, often $0 since most claims go uncontested; ties
+          go to waiver priority), high = beats the committed bidders too (you need him this week).
+          Bid = high if he&apos;d clearly start for you (3+ pts over your weakest eligible starter) or is a
+          <span className="text-warn">hot</span> marginal upgrade, midpoint if marginal, low if depth.
+          Hover a range for the basis.
           A <span className="font-mono">~</span> value is a projection-derived estimate (outside FantasyCalc&apos;s set).
         </p>
       </section>
@@ -517,5 +524,7 @@ function faabTitle(f: FaabAdvice): string {
       : f.basis === "pooled"
         ? `${f.samples} winning bids across your leagues, scaled to this league's spending`
         : "defaults (no bid history yet)";
-  return `${FAAB_TIER_LABEL[f.tier]} tier · based on ${basis}`;
+  const contest =
+    f.contestedShare != null ? ` · ${Math.round(f.contestedShare * 100)}% of them had a competing bid` : "";
+  return `${FAAB_TIER_LABEL[f.tier]} tier · based on ${basis}${contest}`;
 }
