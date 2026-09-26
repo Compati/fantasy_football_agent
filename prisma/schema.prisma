@@ -244,3 +244,42 @@ model PlayerProp {
   @@unique([sleeperId, season, week, market])
   @@index([season, week])
 }
+
+// Fantasy points (PPR) each defense has allowed per game to a position, season
+// to date, from Sleeper's weekly stats. `adjusted` shrinks toward the league
+// average so a 2-game sample doesn't swing matchups; rank 1 = most allowed
+// (friendliest matchup). Refreshed weekly by lib/ingest/opponent.ts.
+model DefenseVsPosition {
+  id          String @id @default(cuid())
+  season      Int
+  throughWeek Int // last completed week included
+  team        String // the defense (Sleeper abbrev)
+  position    String // QB | RB | WR | TE
+  games       Int
+  perGame     Float // raw average
+  adjusted    Float // shrunk toward the league average for the position
+  rank        Int
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([season, team, position])
+}
+
+// Vegas game lines per team for one week (The Odds API spreads + totals, one
+// 2-credit call covers the slate). impliedTotal = the team's expected points.
+model GameLine {
+  id           String   @id @default(cuid())
+  season       Int
+  week         Int
+  team         String // Sleeper abbrev
+  opponent     String
+  isHome       Boolean
+  spread       Float? // this team's line (negative = favored)
+  total        Float?
+  impliedTotal Float?
+  commenceTime DateTime
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([season, week, team])
+}

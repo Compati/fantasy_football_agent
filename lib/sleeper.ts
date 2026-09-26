@@ -100,6 +100,7 @@ export interface SleeperGame {
   home: string;
   away: string;
   status: string;
+  date?: string; // "YYYY-MM-DD"
 }
 
 // The schedule is fixed for a season, so memoize it per season for the process.

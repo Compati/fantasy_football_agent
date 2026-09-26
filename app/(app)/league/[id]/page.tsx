@@ -10,6 +10,7 @@ import { rosterOutlook } from "@/lib/features/roster";
 import { newsForPlayers } from "@/lib/features/news";
 import { propsForPlayers } from "@/lib/features/props";
 import { refreshSleeperLeagueIfStale } from "@/lib/ingest/sleeper";
+import type { PlayerMatchup } from "@/lib/features/opponent";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { TradeAnalyzer } from "./TradeAnalyzer";
 import { Recommendations } from "./Recommendations";
@@ -267,7 +268,8 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
                 {a.player?.name ?? "—"}
                 {a.player?.injuryStatus && <InjuryBadge status={a.player.injuryStatus} />}
               </span>
-              <span className="text-xs text-muted">
+              {a.player?.matchup && <MatchupTag m={a.player.matchup} position={a.player.position} />}
+              <span className="text-xs text-muted w-14 text-right">
                 {a.player ? `${a.player.proj}` : ""}
                 {a.player && a.player.sources < 2 ? " ·1src" : ""}
               </span>
@@ -280,7 +282,15 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
             Close calls:{" "}
             {startSit.closeCalls
               .slice(0, 3)
-              .map((c) => `${c.starter.name} over ${c.alternative.name} (+${c.gap})`)
+              .map(
+                (c) =>
+                  `${c.starter.name} over ${c.alternative.name} (+${c.gap})` +
+                  (c.lean === "alternative"
+                    ? ` — matchup favors ${c.alternative.name}`
+                    : c.lean === "starter"
+                      ? " — matchup agrees"
+                      : ""),
+              )
               .join(" · ")}
           </p>
         )}
@@ -448,3 +458,28 @@ function BackLink() {
   );
 }
 
+const MATCHUP_STYLE: Record<PlayerMatchup["label"], string> = {
+  great: "text-good font-medium",
+  good: "text-good",
+  neutral: "text-muted",
+  hard: "text-bad",
+  tough: "text-bad font-medium",
+};
+
+// "vs NYJ · great" — hover for the numbers behind the rating.
+function MatchupTag({ m, position }: { m: PlayerMatchup; position: string }) {
+  if (!m.opponent) return <span className="text-xs text-muted">bye</span>;
+  const detail = [
+    m.impliedTotal != null ? `${position === "DEF" ? "Opponent" : "Team"} implied total ${m.impliedTotal}` : null,
+    m.dvpRank != null ? `${m.opponent} allows the #${m.dvpRank} most pts to ${position}s` : null,
+    `edge ${m.edge >= 0 ? "+" : ""}${Math.round(m.edge * 100)}%`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <span className="text-xs whitespace-nowrap" title={detail}>
+      <span className="text-muted">{m.isHome ? "vs" : "@"} {m.opponent}</span>
+      {m.label !== "neutral" && <span className={`ml-1 ${MATCHUP_STYLE[m.label]}`}>{m.label}</span>}
+    </span>
+  );
+}

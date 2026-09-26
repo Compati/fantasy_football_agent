@@ -23,10 +23,10 @@ export interface LeagueContext {
     optimalPoints: number;
     currentPoints: number;
     pointsLeftOnBench: number;
-    recommendedLineup: { slot: string; player: string; proj: number; sources: number }[];
+    recommendedLineup: { slot: string; player: string; proj: number; sources: number; opponent?: string | null; matchup?: string; impliedTotal?: number | null; oppRankVsPos?: number | null }[];
     shouldStart: { player: string; proj: number }[];
     shouldSit: { player: string; proj: number }[];
-    closeCalls: { starter: string; alternative: string; gap: number }[];
+    closeCalls: { starter: string; alternative: string; gap: number; matchupLean: string | null }[];
   };
   injuries: { player: string; status: string; starting: boolean }[];
   // Present only for Guillotine (play-the-field) leagues — no head-to-head; the
@@ -131,10 +131,27 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       pointsLeftOnBench: ss.delta,
       recommendedLineup: ss.lineup
         .filter((a) => a.player)
-        .map((a) => ({ slot: a.slot, player: a.player!.name, proj: a.player!.proj, sources: a.player!.sources })),
+        .map((a) => {
+          const m = a.player!.matchup;
+          return {
+            slot: a.slot,
+            player: a.player!.name,
+            proj: a.player!.proj,
+            sources: a.player!.sources,
+            opponent: m?.opponent ?? null,
+            matchup: m?.label,
+            impliedTotal: m?.impliedTotal ?? null,
+            oppRankVsPos: m?.dvpRank ?? null,
+          };
+        }),
       shouldStart: ss.start.map((p) => ({ player: p.name, proj: p.proj })),
       shouldSit: ss.sit.map((p) => ({ player: p.name, proj: p.proj })),
-      closeCalls: ss.closeCalls.slice(0, 5).map((c) => ({ starter: c.starter.name, alternative: c.alternative.name, gap: c.gap })),
+      closeCalls: ss.closeCalls.slice(0, 5).map((c) => ({
+        starter: c.starter.name,
+        alternative: c.alternative.name,
+        gap: c.gap,
+        matchupLean: c.lean === "alternative" ? c.alternative.name : c.lean === "starter" ? c.starter.name : null,
+      })),
     },
     injuries: ss.injuryAlerts,
     ...(survival

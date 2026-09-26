@@ -1,5 +1,22 @@
 # Dev log
 
+## 2026-09-26 — opponent-aware start/sit + roster/DEF cleanups
+
+- **Opponent context** (`lib/features/opponent.ts`, `lib/ingest/opponent.ts`, models `GameLine` +
+  `DefenseVsPosition`): each lineup player gets opponent, Vegas implied team total (Odds API
+  spreads+totals, one 2-credit call per slate; DEF uses the *opponent's* implied), and PPR points the
+  opponent allows to that position (Sleeper weekly stats, shrunk toward league avg with K=2 games).
+  Blended into an edge → great/good/neutral/hard/tough tag on the league page (hover = numbers).
+  **Not applied to projections** (sources already price matchups → double count); it's the
+  **tiebreaker on close calls** (`lean` when edges differ ≥6%) + advisor context/prompt rule.
+  Freshness: `startSitForTeam` calls `ensureOpponentDataFresh` (12h) + daily `refresh-opponent` cron.
+  Odds budget: ≤2 lines refreshes/day ≈ ≤120 credits/mo + props ~258 → ≤~380 of 500.
+  `scripts/opponent-check.ts` = live refresh + sample.
+- **Dashboard** now also re-syncs stale (>5 min) Sleeper rosters (same helper as the league page).
+- **ESPN D/ST** joins the DEF consensus: resolved by nickname (`teamByNickname`), rescaled onto
+  Sleeper's scale by the week's median ratio (`scaleToReference`; raw ESPN DEF ≈0.8× Sleeper,
+  Spearman 0.85). DEF is now 2-source.
+
 ## 2026-09-25 — multi-source projections (4-source consensus)
 
 Consensus now blends **Sleeper + ESPN + CBS + FFToday** (trimmed mean drops min/max at 3+ sources).

@@ -1,4 +1,5 @@
-// The Odds API client (https://the-odds-api.com) — player prop markets only.
+// The Odds API client (https://the-odds-api.com) — player prop markets, plus
+// game spreads/totals for implied team totals (fetchGameLines).
 // Free tier: 500 credits/month. Listing events is free; fetching a single
 // event's odds costs (markets requested x regions) credits — verified live:
 // 3 markets x 1 region = 3 credits/event. Keep both the market list and the
@@ -158,4 +159,58 @@ export async function fetchEventPlayerProps(
 export function impliedProbability(americanOdds: number): number {
   if (americanOdds > 0) return 100 / (americanOdds + 100);
   return -americanOdds / (-americanOdds + 100);
+}
+
+// ---- Game lines (spreads + totals) ------------------------------------------
+
+export interface GameLineOdds {
+  commenceTime: Date;
+  homeTeam: string; // canonical full name
+  awayTeam: string;
+  homeSpread: number | null; // negative = home favored
+  total: number | null;
+}
+
+interface RawGameOdds {
+  commence_time: string;
+  home_team: string;
+  away_team: string;
+  bookmakers: { key: string; markets: { key: string; outcomes: { name: string; point?: number }[] }[] }[];
+}
+
+// Pure parser: preferred book's home spread + game total, falling back per
+// market to the first book that has it.
+export function parseGameLines(data: RawGameOdds[]): GameLineOdds[] {
+  return data.map((g) => {
+    const books = [...g.bookmakers].sort(
+      (a, b) => Number(b.key === PREFERRED_BOOK) - Number(a.key === PREFERRED_BOOK),
+    );
+    const find = (market: string, outcome: string) => {
+      for (const b of books) {
+        const pt = b.markets.find((m) => m.key === market)?.outcomes.find((o) => o.name === outcome)?.point;
+        if (typeof pt === "number") return pt;
+      }
+      return null;
+    };
+    return {
+      commenceTime: new Date(g.commence_time),
+      homeTeam: canonicalTeamName(g.home_team),
+      awayTeam: canonicalTeamName(g.away_team),
+      homeSpread: find("spreads", g.home_team),
+      total: find("totals", "Over"),
+    };
+  });
+}
+
+// Whole upcoming slate in one call. Costs 2 credits (2 markets x 1 region).
+export async function fetchGameLines(): Promise<GameLineOdds[]> {
+  const apiKey = process.env.ODDS_API_KEY;
+  if (!apiKey) throw new Error("ODDS_API_KEY is not set");
+  const url = `${BASE}/sports/${SPORT}/odds?apiKey=${apiKey}&regions=us&markets=spreads,totals&oddsFormat=american`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Odds API game-lines error ${res.status}: ${text.slice(0, 200)}`);
+  }
+  return parseGameLines((await res.json()) as RawGameOdds[]);
 }

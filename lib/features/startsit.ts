@@ -10,6 +10,8 @@ import { isEligible, slotRestrictiveness } from "@/lib/features/eligibility";
 import { UNAVAILABLE_STATUS } from "@/lib/features/injury";
 import { playerDetailMap } from "@/lib/players";
 import type { ProjectionRow } from "@/lib/types";
+import { matchupsFor, closeCallLean, type PlayerMatchup } from "@/lib/features/opponent";
+import { ensureOpponentDataFresh } from "@/lib/ingest/opponent";
 
 export interface LineupPlayer {
   sleeperId: string;
@@ -18,6 +20,7 @@ export interface LineupPlayer {
   proj: number; // consensus projection (0 if unavailable)
   sources: number; // how many projection sources backed it
   injuryStatus?: string | null;
+  matchup?: PlayerMatchup; // this week's opponent context (not baked into proj)
 }
 
 export interface SlotAssignment {
@@ -68,7 +71,8 @@ export interface StartSitResult {
   lineup: SlotAssignment[]; // recommended optimal lineup
   start: LineupPlayer[]; // move these into the lineup
   sit: LineupPlayer[]; // move these to the bench
-  closeCalls: { starter: LineupPlayer; alternative: LineupPlayer; gap: number }[];
+  // lean: which side the matchup favors when it clearly differs (tiebreaker).
+  closeCalls: { starter: LineupPlayer; alternative: LineupPlayer; gap: number; lean: "starter" | "alternative" | null }[];
   injuryAlerts: { player: string; status: string; starting: boolean }[]; // rostered players with a designation
 }
 
@@ -96,6 +100,17 @@ export async function startSitForTeam(
     playerDetailMap(ids),
   ]);
   const consensus = blendProjections(projRows as unknown as ProjectionRow[]);
+  // Opponent context: refresh game lines / defense-vs-position if stale (best effort).
+  await ensureOpponentDataFresh(season, w).catch(() => {});
+  const matchups = await matchupsFor(
+    season,
+    w,
+    rostered.map((r) => ({
+      sleeperId: r.sleeperId as string,
+      nflTeam: detail.get(r.sleeperId as string)?.nflTeam ?? null,
+      position: r.position,
+    })),
+  ).catch(() => new Map<string, PlayerMatchup>());
 
   const players: LineupPlayer[] = rostered.map((r) => {
     const id = r.sleeperId as string;
@@ -111,6 +126,7 @@ export async function startSitForTeam(
       proj: unavailable ? 0 : c?.points ?? 0,
       sources: c?.n ?? 0,
       injuryStatus,
+      matchup: matchups.get(id),
     };
   });
   const byId = new Map(players.map((p) => [p.sleeperId, p]));
@@ -135,7 +151,9 @@ export async function startSitForTeam(
       if (!isEligible(a.slot, b.position)) continue;
       const gap = a.player.proj - b.proj;
       if (gap >= 0 && gap < CLOSE_CALL_GAP) {
-        closeCalls.push({ starter: a.player, alternative: b, gap: Math.round(gap * 100) / 100 });
+        const lean =
+          a.player.matchup && b.matchup ? closeCallLean(a.player.matchup.edge, b.matchup.edge) : null;
+        closeCalls.push({ starter: a.player, alternative: b, gap: Math.round(gap * 100) / 100, lean });
       }
     }
   }

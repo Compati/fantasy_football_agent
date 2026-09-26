@@ -29,12 +29,12 @@ async function main() {
     console.log("Optimal lineup:");
     for (const a of r.lineup) {
       const p = a.player;
-      console.log(`  ${a.slot.padEnd(10)} ${p ? `${p.name} (${p.position}) ${p.proj} [${p.sources}src]` : "—"}`);
+      console.log(`  ${a.slot.padEnd(10)} ${p ? `${p.name} (${p.position}) ${p.proj} [${p.sources}src]${p.matchup?.opponent ? ` ${p.matchup.isHome ? "vs" : "@"} ${p.matchup.opponent} ${p.matchup.label} (${p.matchup.edge})` : ""}` : "—"}`);
     }
     if (r.start.length) console.log("START:", r.start.map((p) => `${p.name} (${p.proj})`).join(", "));
     if (r.sit.length) console.log("SIT:  ", r.sit.map((p) => `${p.name} (${p.proj})`).join(", "));
     if (r.closeCalls.length)
-      console.log("CLOSE:", r.closeCalls.slice(0, 3).map((c) => `${c.starter.name} vs ${c.alternative.name} (${c.gap})`).join("; "));
+      console.log("CLOSE:", r.closeCalls.slice(0, 3).map((c) => `${c.starter.name} vs ${c.alternative.name} (${c.gap}${c.lean ? `, matchup→${c.lean === "alternative" ? c.alternative.name : c.starter.name}` : ""})`).join("; "));
   }
 }
 
