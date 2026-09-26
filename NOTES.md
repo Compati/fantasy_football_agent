@@ -1,5 +1,23 @@
 # Dev log
 
+## 2026-09-25 — multi-source projections (4-source consensus)
+
+Consensus now blends **Sleeper + ESPN + CBS + FFToday** (trimmed mean drops min/max at 3+ sources).
+Week 3 live: 260 players have all 4 sources, 76 have 3; every non-DEF starter across the 3 leagues
+is 4-source (was ≤2). New: `lib/projections/cbs.ts`, `lib/projections/fftoday.ts` (pure HTML
+parsers + fetch), `lib/projections/scraped.ts` (shared row → sleeperId via name+pos+team, then
+name+pos). `scripts/projections-check.ts` refreshes and prints each source's median ratio vs Sleeper
+per position (all 0.88–1.12 now). 52 tests.
+- **FantasyPros dropped:** it now shows only the top 10 per position when logged out.
+  NFL.com's research page redirects to news. FFToday took the 4th slot.
+- **Scoring gotchas found by the ratio check:** CBS + FFToday score passing TDs at 6 pts (all our
+  leagues + Sleeper/ESPN use 4) → QB lines rescored `fpts − 2 × passTD`. CBS DST runs ~1.5× Sleeper,
+  so CBS DST is skipped (DEF stays Sleeper-only). FFToday K is PosID 80 (unknown PosIDs silently
+  serve the QB page). FFToday 403s parallel bursts → fetched sequentially (~10s total).
+- A failed/empty scrape keeps the previous rows for that source instead of wiping them.
+- **Also fixed:** `refreshTradeValues` crashed (P2002) when a player entered FantasyCalc's list while
+  still holding a `derived` row for that format — colliding derived rows are now cleared first.
+
 ## Current state — 2026-09-22 (roster outlook: byes + thin positions; uncommitted)
 
 **Working & verified live on 3 real Sleeper leagues** (amiller180): rosters, **start/sit** (optimal
@@ -249,7 +267,7 @@ exact format. Verified live on 3 real leagues. Yahoo read-only OAuth is built bu
   so waiver/trade coverage isn't sparse.
 - **Opponent/matchup context:** ingest weekly matchups (`getMatchups`) and defense-vs-position so
   start/sit can factor the actual opponent, not just projection.
-- **CBS + FantasyPros consensus:** add a 3rd projection source to strengthen the blend.
+- ~~**CBS + FantasyPros consensus**~~ **DONE 2026-09-25** as CBS + FFToday (FantasyPros is login-gated).
 - **Scoring dimension:** projections are ingested as full-PPR (all current leagues are PPR); add a
   half/std dimension if a non-PPR league is ever added.
 - **Yahoo:** register a Yahoo app and verify `refreshYahooLeagues` extractors vs live JSON (the ppr

@@ -142,7 +142,7 @@ model Projection {
   sleeperId String
   player    Player @relation(fields: [sleeperId], references: [sleeperId], onDelete: Cascade)
 
-  source String // "sleeper" | "espn" | "cbs" | "fantasypros"
+  source String // "sleeper" | "espn" | "cbs" | "fftoday"
   season Int
   week   Int
   points Float

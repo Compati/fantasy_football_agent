@@ -21,9 +21,13 @@ export async function refreshTradeValues(
   );
 
   // Only clear the live-market rows; projection-derived gap-fill rows (source
-  // "derived") are managed separately by refreshDerivedValues.
+  // "derived") are managed separately by refreshDerivedValues. Exception: a
+  // player who just entered FantasyCalc's list may still hold a derived row for
+  // this format, which would collide on the unique key — the market value wins.
+  const format = { isDynasty, ppr: ctx.ppr, numQbs: ctx.numQbs, numTeams: ctx.numTeams };
+  await prisma.tradeValue.deleteMany({ where: { source: "fantasycalc", ...format } });
   await prisma.tradeValue.deleteMany({
-    where: { source: "fantasycalc", isDynasty, ppr: ctx.ppr, numQbs: ctx.numQbs, numTeams: ctx.numTeams },
+    where: { source: "derived", ...format, sleeperId: { in: rows.map((r) => r.sleeperId as string) } },
   });
   if (rows.length > 0) {
     await prisma.tradeValue.createMany({

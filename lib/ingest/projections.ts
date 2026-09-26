@@ -7,6 +7,9 @@
 import { prisma } from "@/lib/db";
 import { getProjections, getNflState } from "@/lib/sleeper";
 import { getEspnProjections } from "@/lib/projections/espn";
+import { getCbsProjections } from "@/lib/projections/cbs";
+import { getFftodayProjections } from "@/lib/projections/fftoday";
+import type { ScrapedProjection, ScrapedResult } from "@/lib/projections/scraped";
 import { ensureCatalogFresh, normalizeName } from "@/lib/players";
 import type { ProjectionRow } from "@/lib/types";
 
@@ -16,6 +19,10 @@ export interface ProjectionsIngestSummary {
   sleeper: number;
   espn: number;
   espnUnresolved: number;
+  cbs: number;
+  cbsUnresolved: number;
+  fftoday: number;
+  fftodayUnresolved: number;
 }
 
 async function replaceSource(
@@ -53,19 +60,29 @@ export async function refreshProjections(
 
   // Only keep projections for players we actually have (FK safety).
   const players = await prisma.player.findMany({
-    select: { sleeperId: true, espnId: true, name: true, position: true },
+    select: { sleeperId: true, espnId: true, name: true, position: true, nflTeam: true },
   });
   const validIds = new Set(players.map((p) => p.sleeperId));
   const espnToSleeper = new Map<string, string>();
   const namePos = new Map<string, string>();
+  const namePosTeam = new Map<string, string>();
   for (const p of players) {
     if (p.espnId) espnToSleeper.set(p.espnId, p.sleeperId);
     namePos.set(`${normalizeName(p.name)}|${p.position}`, p.sleeperId);
+    if (p.nflTeam) namePosTeam.set(`${normalizeName(p.name)}|${p.position}|${p.nflTeam}`, p.sleeperId);
   }
   const namePosResolver = (name: string, position: string) =>
     namePos.get(`${normalizeName(name)}|${position}`) ?? null;
+  // Scraped sources (no ids): team disambiguates duplicate names; fall back to
+  // name+pos for players whose catalog team is stale. DEF ids are team abbrevs.
+  const scrapedResolver = (p: ScrapedProjection) => {
+    if (p.position === "DEF") return p.team && validIds.has(p.team) ? p.team : null;
+    const key = `${normalizeName(p.name)}|${p.position}`;
+    return (p.team && namePosTeam.get(`${key}|${p.team}`)) || namePos.get(key) || null;
+  };
+  const emptyScraped: ScrapedResult = { rows: [], fetched: 0, unresolved: 0 };
 
-  const [sleeperRows, espnRes] = await Promise.all([
+  const [sleeperRows, espnRes, cbsRes, fftRes] = await Promise.all([
     getProjections(s, w, ppr).catch(() => [] as ProjectionRow[]),
     getEspnProjections(s, w, ppr, espnToSleeper, 600, namePosResolver).catch(() => ({
       rows: [] as ProjectionRow[],
@@ -73,10 +90,16 @@ export async function refreshProjections(
       fetched: 0,
       matchedProjection: 0,
     })),
+    getCbsProjections(s, w, scrapedResolver).catch(() => emptyScraped),
+    getFftodayProjections(s, w, scrapedResolver).catch(() => emptyScraped),
   ]);
 
   const sleeperN = await replaceSource("sleeper", s, w, sleeperRows, validIds);
   const espnN = await replaceSource("espn", s, w, espnRes.rows, validIds);
+  // A scrape that failed or came back empty (site down, markup changed, week not
+  // published yet) keeps the previous rows rather than wiping that source.
+  const cbsN = cbsRes.rows.length ? await replaceSource("cbs", s, w, cbsRes.rows, validIds) : 0;
+  const fftN = fftRes.rows.length ? await replaceSource("fftoday", s, w, fftRes.rows, validIds) : 0;
 
   return {
     season: s,
@@ -84,5 +107,9 @@ export async function refreshProjections(
     sleeper: sleeperN,
     espn: espnN,
     espnUnresolved: espnRes.unresolvedEspnIds,
+    cbs: cbsN,
+    cbsUnresolved: cbsRes.unresolved,
+    fftoday: fftN,
+    fftodayUnresolved: fftRes.unresolved,
   };
 }

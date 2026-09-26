@@ -6,7 +6,9 @@ export type Position = "QB" | "RB" | "WR" | "TE" | "K" | "DEF" | string;
 
 // A projection source. Adding a new source = a new adapter that emits rows with
 // its own tag; nothing downstream needs to change (see lib/projections).
-export type ProjectionSource = "sleeper" | "espn" | "cbs" | "fantasypros";
+// FantasyPros was the original 4th candidate but now gates everything past the
+// top 10 per position behind a login, so FFToday fills that slot.
+export type ProjectionSource = "sleeper" | "espn" | "cbs" | "fftoday";
 
 // Canonical player identity. Seeded from the Sleeper player catalog, which
 // conveniently carries the ESPN and Yahoo ids too — so every other source joins

@@ -11,7 +11,7 @@ async function main() {
 
   console.log("Ingesting projections …");
   const proj = await refreshProjections();
-  console.log(`  season ${proj.season} wk ${proj.week}: sleeper=${proj.sleeper} espn=${proj.espn} (espnUnresolved=${proj.espnUnresolved})`);
+  console.log(`  season ${proj.season} wk ${proj.week}: sleeper=${proj.sleeper} espn=${proj.espn} (unresolved ${proj.espnUnresolved}) cbs=${proj.cbs} (unresolved ${proj.cbsUnresolved}) fftoday=${proj.fftoday} (unresolved ${proj.fftodayUnresolved})`);
 
   console.log("Ingesting trade values …");
   const tv = await refreshTradeValuesForUser(user.id);

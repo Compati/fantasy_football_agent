@@ -53,6 +53,9 @@ const ALIASES: Record<string, string> = {
   "oakland raiders": "las vegas raiders",
   "san diego chargers": "los angeles chargers",
   "st louis rams": "los angeles rams",
+  // Legacy abbreviations some feeds (CBS) still use.
+  jac: "jacksonville jaguars",
+  wsh: "washington commanders",
 };
 
 function normalizeKey(raw: string): string {

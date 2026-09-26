@@ -10,6 +10,24 @@ export interface GetJsonOptions {
   timeoutMs?: number;
 }
 
+// Same, but returns the raw body — for the HTML-table projection sources
+// (CBS, FFToday) that have no JSON API.
+export async function getText(url: string, opts: GetJsonOptions = {}): Promise<string> {
+  const { headers = {}, timeoutMs = 20_000 } = opts;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA, Accept: "text/html", ...headers },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`GET ${url} -> ${res.status} ${res.statusText}`);
+    return await res.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function getJson<T = unknown>(
   url: string,
   opts: GetJsonOptions = {},
