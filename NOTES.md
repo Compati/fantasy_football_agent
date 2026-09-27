@@ -1,5 +1,18 @@
 # Dev log
 
+## 2026-09-27 (latest) — trade ideas: near term vs rest of season
+
+Trade finder now searches two windows: **near** (this wk + next 2) and **rest of season** (now →
+league's last week: H2H = playoff final via `seasonEndWeek(playoff_week_start, playoff_teams)` → wk 17
+for Escalated/Panini; no playoffs → 17). ROS uses this week's consensus + Sleeper weekly projections
+for every later week (cached in-process 6h). Qualifying thresholds are per week (you ≥0.5/wk, them
+≥1/3 wk), so 3-wk behaviour is unchanged. Every idea carries the same swap's gains on the other window
+(`swapGains`); UI shows both side by side and flags "helps now, costs you later" / "slow burn".
+Advisor prompt: prefer trades positive on both windows; weigh by situation (bubble/Guillotine →
+near term, comfortable → ROS). Live: Escalated's #1 near-term idea (Achane+Smith→Gibbs) is −18.5 ROS
+for you; Smith→Collins is + on both (advisor now picks it). Guillotine ROS: Etienne→M.Wilson+Winston
++52 ROS. 0.3-1.3s per league. 84 tests.
+
 ## 2026-09-27 (later) — trade finder, Generate-all, advisor structured outputs
 
 - **Trade finder** (`lib/features/trade-finder.ts`, pure core tested; `scripts/trade-check.ts`):

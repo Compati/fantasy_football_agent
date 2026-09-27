@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { findTrades, horizonTotal, type TfPlayer, type TfTeam } from "@/lib/features/trade-finder";
+import { findTrades, horizonTotal, swapGains, seasonEndWeek, type TfPlayer, type TfTeam } from "@/lib/features/trade-finder";
 
 const p = (id: string, position: string, value: number, proj: number[]): TfPlayer => ({
   sleeperId: id,
@@ -78,4 +78,41 @@ test("findTrades drops padded versions of the same deal", () => {
   };
   const ideas = findTrades(me, [them], SLOTS, 10);
   assert.ok(!ideas.some((i) => i.give.some((x) => x.sleeperId === "myPad")));
+});
+
+test("seasonEndWeek: playoff final for H2H leagues, else week 17", () => {
+  assert.equal(seasonEndWeek(15, 6), 17); // 6 teams = 3 rounds: wks 15-17
+  assert.equal(seasonEndWeek(15, 4), 16); // 4 teams = 2 rounds
+  assert.equal(seasonEndWeek(0, undefined), 17); // no playoffs (e.g. guillotine)
+});
+
+test("the same swap can win the near term and lose the rest of season", () => {
+  // Their WR is hot for 3 weeks then fades; my RB2 is steady all season.
+  const hotThenCold = [15, 15, 15, 3, 3, 3, 3, 3];
+  const steady = [10, 10, 10, 10, 10, 10, 10, 10];
+  const me: TfTeam = {
+    teamId: "me",
+    name: "Me",
+    players: [p("myRb1", "RB", 1000, steady), p("myRb2", "RB", 950, steady), p("myWr", "WR", 100, Array(8).fill(4))],
+  };
+  const them: TfTeam = {
+    teamId: "t",
+    name: "Them",
+    players: [p("thWr", "WR", 1000, hotThenCold), p("thWr2", "WR", 900, Array(8).fill(8)), p("thRb", "RB", 100, Array(8).fill(2))],
+  };
+  const slots = ["RB", "RB", "WR"]; // two RB slots, so my RB2 is a real starter
+  const near = swapGains(me, them, [me.players[1]], [them.players[0]], slots, 3);
+  const ros = swapGains(me, them, [me.players[1]], [them.players[0]], slots, 8);
+  assert.equal(near.myGain, 3); // WR 4 -> 15 (+11) but RB 10 -> 0 (-10), x3 weeks
+  assert.equal(ros.myGain, -47); // then the WR fades below my own: -10/wk for 5 more weeks
+  // The finder surfaces it on the near horizon only.
+  assert.ok(findTrades(me, [them], slots, 5, 3).some((i) => i.get[0].sleeperId === "thWr"));
+  assert.ok(!findTrades(me, [them], slots, 5, 8).some((i) => i.get[0].sleeperId === "thWr"));
+});
+
+test("findTrades thresholds scale with the horizon length", () => {
+  // +0.4/wk for me: under the 0.5/wk bar on any horizon.
+  const me: TfTeam = { teamId: "me", name: "Me", players: [p("a", "RB", 100, Array(10).fill(10)), p("w", "WR", 100, Array(10).fill(10))] };
+  const them: TfTeam = { teamId: "t", name: "Them", players: [p("b", "RB", 100, Array(10).fill(10.4)), p("x", "WR", 100, Array(10).fill(10))] };
+  assert.equal(findTrades(me, [them], SLOTS, 5, 10).length, 0);
 });

@@ -14,7 +14,7 @@ import type { PlayerMatchup } from "@/lib/features/opponent";
 import type { FaabAdvice } from "@/lib/features/waivers";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { TradeAnalyzer } from "./TradeAnalyzer";
-import { tradeIdeasForTeam, type TfPlayer } from "@/lib/features/trade-finder";
+import { tradeIdeasForTeam, type TfPlayer, type HorizonIdeas } from "@/lib/features/trade-finder";
 import { Recommendations } from "./Recommendations";
 
 export const dynamic = "force-dynamic";
@@ -470,28 +470,14 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
         <section className="rounded-xl border border-border bg-surface p-4 mb-5">
           <h2 className="font-medium mb-1">Trade ideas</h2>
           <p className="text-xs text-muted mb-3">
-            Fair by market value, and both lineups get better over weeks {trades.horizon[0]}–
-            {trades.horizon[trades.horizon.length - 1]} (byes and
-            injuries counted) — so they&apos;re worth actually proposing.
+            Fair by market value, and both lineups get better over the window (byes, injuries and playoff
+            weeks counted) — so they&apos;re worth actually proposing. Each idea also shows how the same swap
+            plays out over the other window.
           </p>
-          {trades.ideas.length === 0 ? (
-            <p className="text-sm text-muted">No fair trade improves both lineups right now.</p>
-          ) : (
-            <ul className="space-y-2">
-              {trades.ideas.map((t, i) => (
-                <li key={i} className="text-sm">
-                  <span className="text-muted">with {t.partnerName}:</span> give{" "}
-                  <span className="font-medium">{tradeSide(t.give)}</span> → get{" "}
-                  <span className="font-medium">{tradeSide(t.get)}</span>
-                  <div className="text-xs text-muted">
-                    <span className="text-good">you +{t.myGain} pts</span> · them +{t.theirGain} pts over{" "}
-                    {trades.horizon.length} weeks · value {t.giveValue.toLocaleString()} for{" "}
-                    {t.getValue.toLocaleString()}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="grid gap-4 md:grid-cols-2">
+            <TradeHorizon title="Next 3 weeks" h={trades.near} otherLabel="rest of season" />
+            <TradeHorizon title="Rest of season" h={trades.ros} otherLabel="next 3 weeks" />
+          </div>
         </section>
       )}
 
@@ -555,3 +541,45 @@ function faabTitle(f: FaabAdvice): string {
 }
 
 const tradeSide = (ps: TfPlayer[]) => ps.map((p) => `${p.name} (${p.position})`).join(" + ");
+
+const signed = (n: number) => `${n >= 0 ? "+" : ""}${n}`;
+
+// One horizon's trade ideas. Flags swaps whose other-window result is negative
+// for you: good now but costly later (near list), or a slow burn (ROS list).
+function TradeHorizon({ title, h, otherLabel }: { title: string; h: HorizonIdeas; otherLabel: string }) {
+  const range = `weeks ${h.weeks[0]}–${h.weeks[h.weeks.length - 1]}`;
+  return (
+    <div>
+      <h3 className="text-sm font-medium mb-2">
+        {title} <span className="text-xs text-muted font-normal">({range})</span>
+      </h3>
+      {h.ideas.length === 0 ? (
+        <p className="text-sm text-muted">No fair trade improves both lineups over this window.</p>
+      ) : (
+        <ul className="space-y-2">
+          {h.ideas.map((t, i) => (
+            <li key={i} className="text-sm">
+              <span className="text-muted">with {t.partnerName}:</span> give{" "}
+              <span className="font-medium">{tradeSide(t.give)}</span> → get{" "}
+              <span className="font-medium">{tradeSide(t.get)}</span>
+              <div className="text-xs text-muted">
+                <span className="text-good">you +{t.myGain} pts</span> · them +{t.theirGain} · value{" "}
+                {t.giveValue.toLocaleString()} for {t.getValue.toLocaleString()}
+              </div>
+              <div className="text-xs text-muted">
+                {otherLabel}:{" "}
+                <span className={t.other.myGain < 0 ? "text-bad" : "text-good"}>you {signed(t.other.myGain)}</span> ·
+                them {signed(t.other.theirGain)}
+                {t.other.myGain < 0 && (
+                  <span className="ml-1 text-warn">
+                    {otherLabel === "rest of season" ? "— helps now, costs you later" : "— slow burn: costs you now, pays later"}
+                  </span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

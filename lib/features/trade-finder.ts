@@ -5,17 +5,20 @@
 // qualifies when it is
 //   - fair by market value: they get at least FAIR_MIN of what they give up,
 //     and you don't overpay by more than FAIR_MAX;
-//   - a real upgrade for you: your best-lineup total over the horizon (this
-//     week + the next two, so byes and injuries count) rises by MIN_MY_GAIN;
-//   - an upgrade for them too (their horizon lineup total rises by at least
-//     MIN_THEIR_GAIN) — a trade that does nothing for them won't be accepted.
+//   - a real upgrade for you: your best-lineup total over the horizon rises by
+//     MIN_MY_GAIN_PER_WEEK x weeks (byes and injuries count);
+//   - an upgrade for them too (MIN_THEIR_GAIN_PER_WEEK x weeks) — a trade that
+//     does nothing for them won't be accepted.
+// Two horizons are searched (see tradeIdeasForTeam): NEAR = this week + the
+// next two, ROS = rest of season through the league's last week (playoffs
+// included). Each idea also carries the other horizon's gains for comparison.
 // Padded versions are dropped: if giving a subset of the same players for the
 // same return does as well, the extra player is a pure giveaway. And only the
 // best offer per return package is kept (biggest gain, then cheapest).
 // Ranked by your gain; at most MAX_PER_PARTNER ideas per team.
 
 import { prisma } from "@/lib/db";
-import { getNflState, getProjections } from "@/lib/sleeper";
+import { getNflState, getProjections, getLeague } from "@/lib/sleeper";
 import { blendProjections } from "@/lib/projections/consensus";
 import { injuryAdjustedProj } from "@/lib/features/injury";
 import { starterSlots } from "@/lib/ingest/sleeper-transform";
@@ -47,18 +50,25 @@ export interface TradeIdea {
   getValue: number;
 }
 
+export interface SwapGains {
+  myGain: number;
+  theirGain: number;
+}
+
 export const FAIR_MIN = 0.9; // giveValue >= 0.9 x getValue (they aren't fleeced)
 export const FAIR_MAX = 1.25; // giveValue <= 1.25 x getValue (you don't overpay)
-export const MIN_MY_GAIN = 1.5; // horizon points
-export const MIN_THEIR_GAIN = 1; // horizon points
+// Thresholds scale with the horizon: 3 weeks -> you +1.5, them +1.
+export const MIN_MY_GAIN_PER_WEEK = 0.5;
+export const MIN_THEIR_GAIN_PER_WEEK = 1 / 3;
 const MAX_PER_PARTNER = 2;
 const TRADEABLE = new Set(["QB", "RB", "WR", "TE"]);
 
-// Sum of the optimal lineup's projected points over every horizon week.
-export function horizonTotal(players: TfPlayer[], slots: string[]): number {
-  const weeks = Math.max(0, ...players.map((p) => p.projByWeek.length));
+// Sum of the optimal lineup's projected points over the first `weeks` horizon
+// weeks (all of them by default).
+export function horizonTotal(players: TfPlayer[], slots: string[], weeks?: number): number {
+  const n = weeks ?? Math.max(0, ...players.map((p) => p.projByWeek.length));
   let total = 0;
-  for (let k = 0; k < weeks; k++) {
+  for (let k = 0; k < n; k++) {
     const asLineup: LineupPlayer[] = players.map((p) => ({
       sleeperId: p.sleeperId,
       name: p.name,
@@ -80,14 +90,42 @@ function combos(ps: TfPlayer[], size: 1 | 2): TfPlayer[][] {
   return out;
 }
 
-export function findTrades(me: TfTeam, others: TfTeam[], slots: string[], limit = 5): TradeIdea[] {
-  const myBase = horizonTotal(me.players, slots);
+// Both sides' lineup gain from a swap over the first `weeks` horizon weeks.
+export function swapGains(
+  me: TfTeam,
+  other: TfTeam,
+  give: TfPlayer[],
+  get: TfPlayer[],
+  slots: string[],
+  weeks: number,
+): SwapGains {
+  const giveIds = new Set(give.map((p) => p.sleeperId));
+  const getIds = new Set(get.map((p) => p.sleeperId));
+  const myAfter = [...me.players.filter((p) => !giveIds.has(p.sleeperId)), ...get];
+  const theirAfter = [...other.players.filter((p) => !getIds.has(p.sleeperId)), ...give];
+  const r = (x: number) => Math.round(x * 100) / 100;
+  return {
+    myGain: r(horizonTotal(myAfter, slots, weeks) - horizonTotal(me.players, slots, weeks)),
+    theirGain: r(horizonTotal(theirAfter, slots, weeks) - horizonTotal(other.players, slots, weeks)),
+  };
+}
+
+export function findTrades(
+  me: TfTeam,
+  others: TfTeam[],
+  slots: string[],
+  limit = 5,
+  weeks = Math.max(0, ...me.players.map((p) => p.projByWeek.length)),
+): TradeIdea[] {
+  const minMine = MIN_MY_GAIN_PER_WEEK * weeks;
+  const minTheirs = MIN_THEIR_GAIN_PER_WEEK * weeks;
+  const myBase = horizonTotal(me.players, slots, weeks);
   const myPool = me.players.filter((p) => TRADEABLE.has(p.position) && p.value > 0);
   const ideas: TradeIdea[] = [];
 
   for (const other of others) {
     if (other.players.length === 0) continue; // e.g. an eliminated guillotine team
-    const theirBase = horizonTotal(other.players, slots);
+    const theirBase = horizonTotal(other.players, slots, weeks);
     const theirPool = other.players.filter((p) => TRADEABLE.has(p.position) && p.value > 0);
     const found: TradeIdea[] = [];
     for (const [giveN, getN] of [[1, 1], [2, 1], [1, 2]] as const) {
@@ -100,11 +138,11 @@ export function findTrades(me: TfTeam, others: TfTeam[], slots: string[], limit 
           const giveIds = new Set(give.map((p) => p.sleeperId));
           const getIds = new Set(get.map((p) => p.sleeperId));
           const myAfter = [...me.players.filter((p) => !giveIds.has(p.sleeperId)), ...get];
-          const myGain = horizonTotal(myAfter, slots) - myBase;
-          if (myGain < MIN_MY_GAIN) continue;
+          const myGain = horizonTotal(myAfter, slots, weeks) - myBase;
+          if (myGain < minMine) continue;
           const theirAfter = [...other.players.filter((p) => !getIds.has(p.sleeperId)), ...give];
-          const theirGain = horizonTotal(theirAfter, slots) - theirBase;
-          if (theirGain < MIN_THEIR_GAIN) continue;
+          const theirGain = horizonTotal(theirAfter, slots, weeks) - theirBase;
+          if (theirGain < minTheirs - 1e-9) continue;
           found.push({
             partnerTeamId: other.teamId,
             partnerName: other.name,
@@ -141,12 +179,51 @@ export function findTrades(me: TfTeam, others: TfTeam[], slots: string[], limit 
 
 // ---- DB-backed wrapper -------------------------------------------------------
 
-const HORIZON_WEEKS = 3;
+const NEAR_WEEKS = 3;
+const DEFAULT_SEASON_END = 17; // fantasy seasons almost never score week 18
+
+// Last fantasy week: the playoff final for H2H leagues (one week per round),
+// else week 17.
+export function seasonEndWeek(playoffWeekStart: number | undefined, playoffTeams: number | undefined): number {
+  if (!playoffWeekStart || !playoffTeams) return DEFAULT_SEASON_END;
+  const rounds = Math.ceil(Math.log2(playoffTeams));
+  return Math.min(18, playoffWeekStart + rounds - 1);
+}
+
+// Future-week Sleeper projections change slowly and are large, so cache them
+// in-process for a few hours (the ROS view needs up to ~15 weeks).
+const PROJ_TTL_MS = 6 * 60 * 60 * 1000;
+const projCache = new Map<string, { at: number; rows: Promise<Map<string, number>> }>();
+function cachedProjections(season: number, week: number, ppr: number): Promise<Map<string, number>> {
+  const key = `${season}|${week}|${ppr}`;
+  const hit = projCache.get(key);
+  if (hit && Date.now() - hit.at < PROJ_TTL_MS) return hit.rows;
+  const rows = getProjections(season, week, ppr)
+    .then((rs) => new Map(rs.map((r) => [r.sleeperId, r.points])))
+    .catch(() => {
+      projCache.delete(key); // don't cache a failure
+      return new Map<string, number>();
+    });
+  projCache.set(key, { at: Date.now(), rows });
+  return rows;
+}
+
+export interface HorizonIdeas {
+  weeks: number[]; // the NFL weeks this horizon covers
+  // Each idea is found + ranked on this horizon; `other` = the same swap's
+  // gains on the opposite horizon, for the near-vs-long-term comparison.
+  ideas: (TradeIdea & { other: SwapGains })[];
+}
+
+export interface TradeIdeasResult {
+  near: HorizonIdeas;
+  ros: HorizonIdeas;
+}
 
 // Trade ideas for one of the user's teams against every other team in its
-// league. Horizon: this week's consensus (injury-adjusted) + Sleeper's
-// projections for the next two weeks.
-export async function tradeIdeasForTeam(teamId: string, limit = 5): Promise<{ ideas: TradeIdea[]; horizon: number[] }> {
+// league, on two horizons. Projections: this week's consensus (injury-
+// adjusted), then Sleeper's weekly projections for every later week.
+export async function tradeIdeasForTeam(teamId: string, limit = 5): Promise<TradeIdeasResult> {
   const team = await prisma.team.findUniqueOrThrow({
     where: { id: teamId },
     include: { league: { include: { teams: { include: { roster: true } } } } },
@@ -154,21 +231,25 @@ export async function tradeIdeasForTeam(teamId: string, limit = 5): Promise<{ id
   const league = team.league;
   const state = await getNflState();
   const week = state.week > 0 ? state.week : 1;
-  const horizon = Array.from({ length: HORIZON_WEEKS }, (_, k) => week + k).filter((w) => w <= 18);
+  const settings =
+    league.platform === "sleeper" ? (await getLeague(league.externalId).catch(() => null))?.settings : undefined;
+  const endWeek = Math.max(week, seasonEndWeek(settings?.playoff_week_start, settings?.playoff_teams));
+  const rosWeeks = Array.from({ length: endWeek - week + 1 }, (_, k) => week + k);
 
-  const ids = [...new Set(league.teams.flatMap((t) => t.roster.map((r) => r.sleeperId).filter((x): x is string => !!x)))];
+  const ids = [
+    ...new Set(league.teams.flatMap((t) => t.roster.map((r) => r.sleeperId).filter((x): x is string => !!x))),
+  ];
   const [players, values, projRows, ...future] = await Promise.all([
     prisma.player.findMany({ where: { sleeperId: { in: ids } } }),
     prisma.tradeValue.findMany({
       where: { sleeperId: { in: ids }, isDynasty: false, ppr: league.ppr, numQbs: league.numQbs, numTeams: league.numTeams },
     }),
     prisma.projection.findMany({ where: { sleeperId: { in: ids }, season: league.season, week } }),
-    ...horizon.slice(1).map((w) => getProjections(league.season, w, league.ppr).catch(() => [] as ProjectionRow[])),
+    ...rosWeeks.slice(1).map((w) => cachedProjections(league.season, w, league.ppr)),
   ]);
   const byId = new Map(players.map((p) => [p.sleeperId, p]));
   const valueById = new Map(values.map((v) => [v.sleeperId, v.value]));
   const consensus = blendProjections(projRows as unknown as ProjectionRow[]);
-  const futureMaps = future.map((rows) => new Map(rows.map((r) => [r.sleeperId, r.points])));
 
   const toTeam = (t: (typeof league.teams)[number]): TfTeam => ({
     teamId: t.id,
@@ -184,7 +265,7 @@ export async function tradeIdeasForTeam(teamId: string, limit = 5): Promise<{ id
           value: valueById.get(p.sleeperId) ?? 0,
           projByWeek: [
             injuryAdjustedProj(consensus.get(p.sleeperId)?.points ?? 0, p.injuryStatus),
-            ...futureMaps.map((m) => m.get(p.sleeperId) ?? 0),
+            ...future.map((m) => m.get(p.sleeperId) ?? 0),
           ],
         };
       }),
@@ -193,5 +274,15 @@ export async function tradeIdeasForTeam(teamId: string, limit = 5): Promise<{ id
   const slots = starterSlots((league.rosterPositions as string[]) ?? []);
   const me = toTeam(league.teams.find((t) => t.id === teamId)!);
   const others = league.teams.filter((t) => t.id !== teamId).map(toTeam);
-  return { ideas: findTrades(me, others, slots, limit), horizon };
+  const partnerOf = new Map(others.map((o) => [o.teamId, o]));
+  const nearN = Math.min(NEAR_WEEKS, rosWeeks.length);
+  const rosN = rosWeeks.length;
+
+  const annotate = (ideas: TradeIdea[], otherWeeks: number) =>
+    ideas.map((i) => ({ ...i, other: swapGains(me, partnerOf.get(i.partnerTeamId)!, i.give, i.get, slots, otherWeeks) }));
+
+  return {
+    near: { weeks: rosWeeks.slice(0, nearN), ideas: annotate(findTrades(me, others, slots, limit, nearN), rosN) },
+    ros: { weeks: rosWeeks, ideas: annotate(findTrades(me, others, slots, limit, rosN), nearN) },
+  };
 }

@@ -4,7 +4,7 @@
 
 import { prisma } from "@/lib/db";
 import { startSitForTeam, type LineupPlayer, type SlotAssignment } from "@/lib/features/startsit";
-import { tradeIdeasForTeam } from "@/lib/features/trade-finder";
+import { tradeIdeasForTeam, type HorizonIdeas } from "@/lib/features/trade-finder";
 import { waiverTargets } from "@/lib/features/waivers";
 import { getSurvival } from "@/lib/features/survival";
 import { rosterOutlook } from "@/lib/features/roster";
@@ -87,18 +87,27 @@ export interface LeagueContext {
     anytimeTdProb: number | null; // 0-1
   }[];
   // Concrete proposable trades: fair by market value and improving BOTH
-  // lineups over the next few weeks (lib/features/trade-finder.ts).
+  // lineups (lib/features/trade-finder.ts), searched on two windows. Each
+  // entry also carries the same swap's result on the OTHER window.
   tradeIdeas: {
-    partner: string;
-    give: string[];
-    get: string[];
-    yourGainPtsTotal: number; // TOTAL over horizonWeeks (not per week)
-    theirGainPtsTotal: number;
-    giveValue: number;
-    getValue: number;
-    horizonWeeks: number;
-  }[];
+    nearTerm: TradeIdeaCtx[]; // found on the next ~3 weeks
+    restOfSeason: TradeIdeaCtx[]; // found on now -> the league's final week
+    nearTermWeeks: number;
+    restOfSeasonWeeks: number;
+  };
   dataAvailable: string[];
+}
+
+interface TradeIdeaCtx {
+  partner: string;
+  give: string[];
+  get: string[];
+  yourGainPtsTotal: number; // TOTAL over this list's window (not per week)
+  theirGainPtsTotal: number;
+  otherWindowYourGainPtsTotal: number; // same swap on the other window (can be negative)
+  otherWindowTheirGainPtsTotal: number;
+  giveValue: number;
+  getValue: number;
 }
 
 export async function buildLeagueContext(teamId: string): Promise<LeagueContext> {
@@ -236,16 +245,12 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       recYdsLine: p.recYdsLine,
       anytimeTdProb: p.anytimeTdProb != null ? Math.round(p.anytimeTdProb * 100) / 100 : null,
     })),
-    tradeIdeas: (trades?.ideas ?? []).map((t) => ({
-      partner: t.partnerName,
-      give: t.give.map((p) => `${p.name} (${p.position})`),
-      get: t.get.map((p) => `${p.name} (${p.position})`),
-      yourGainPtsTotal: t.myGain,
-      theirGainPtsTotal: t.theirGain,
-      giveValue: t.giveValue,
-      getValue: t.getValue,
-      horizonWeeks: trades!.horizon.length,
-    })),
+    tradeIdeas: {
+      nearTerm: (trades?.near.ideas ?? []).map(toTradeCtx),
+      restOfSeason: (trades?.ros.ideas ?? []).map(toTradeCtx),
+      nearTermWeeks: trades?.near.weeks.length ?? 0,
+      restOfSeasonWeeks: trades?.ros.weeks.length ?? 0,
+    },
     dataAvailable: [
       "consensus projections (Sleeper + ESPN + CBS + FFToday)",
       "FantasyCalc market values",
@@ -279,4 +284,18 @@ export function describeDvp(opponent: string, rank: number, position: string): s
   const ord = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
   const ease = rank <= 6 ? "easy matchup" : rank >= 27 ? "hard matchup" : "average matchup";
   return `${opponent} allows the ${ord(rank)}-most PPR points to ${position}s (of 32; ${ease})`;
+}
+
+function toTradeCtx(t: HorizonIdeas["ideas"][number]): TradeIdeaCtx {
+  return {
+    partner: t.partnerName,
+    give: t.give.map((p) => `${p.name} (${p.position})`),
+    get: t.get.map((p) => `${p.name} (${p.position})`),
+    yourGainPtsTotal: t.myGain,
+    theirGainPtsTotal: t.theirGain,
+    otherWindowYourGainPtsTotal: t.other.myGain,
+    otherWindowTheirGainPtsTotal: t.other.theirGain,
+    giveValue: t.giveValue,
+    getValue: t.getValue,
+  };
 }
