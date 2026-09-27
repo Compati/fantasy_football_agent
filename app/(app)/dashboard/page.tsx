@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { yahooConfigured } from "@/lib/yahoo/oauth";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { ConnectPanel } from "./ConnectPanel";
+import { GenerateAll } from "./GenerateAll";
 import { refreshSleeperLeagueIfStale } from "@/lib/ingest/sleeper";
 
 // Same freshness rule as the league page: re-pull a Sleeper roster older than this.
@@ -50,6 +51,9 @@ export default async function Dashboard({
   const latestByTeam = new Map<string, (typeof recs)[number]>();
   for (const r of recs) if (!latestByTeam.has(r.teamId)) latestByTeam.set(r.teamId, r);
   const digest = [...latestByTeam.values()];
+  const myTeams = leagues
+    .filter((lg) => lg.teams[0])
+    .map((lg) => ({ teamId: lg.teams[0].id, leagueName: lg.name }));
 
   // Injury status for every rostered player shown, keyed by sleeperId.
   const rosterIds = leagues.flatMap((lg) =>
@@ -78,9 +82,15 @@ export default async function Dashboard({
 
       <ConnectPanel hasSleeper={hasSleeper} yahooConfigured={yahooConfigured()} hasYahoo={hasYahoo} />
 
-      {digest.length > 0 && (
+      {myTeams.length > 0 && (
         <section className="mt-8">
-          <h2 className="text-sm font-medium text-muted uppercase mb-2">This week&rsquo;s moves</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h2 className="text-sm font-medium text-muted uppercase">This week&rsquo;s moves</h2>
+            <GenerateAll teams={myTeams} />
+          </div>
+          {digest.length === 0 && (
+            <p className="text-sm text-muted">No recommendations yet — generate them for every league at once.</p>
+          )}
           <div className="grid gap-3">
             {digest.map((r) => {
               const moves = (r.moves as unknown as { title: string; type: string }[]) ?? [];

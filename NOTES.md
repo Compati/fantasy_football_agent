@@ -1,5 +1,20 @@
 # Dev log
 
+## 2026-09-27 (later) — trade finder, Generate-all, advisor structured outputs
+
+- **Trade finder** (`lib/features/trade-finder.ts`, pure core tested; `scripts/trade-check.ts`):
+  every 1-for-1 / 2-for-1 / 1-for-2 (no K/DEF) vs each league team; must be fair by market value
+  (they get ≥90%, you pay ≤125%), raise YOUR optimal-lineup total over a 3-week horizon (this week's
+  consensus + Sleeper's next 2 weeks, so byes/injuries count) by ≥1.5, and raise THEIRS by ≥1.
+  Padded deals dropped; one offer per return package per partner; ~0.2-0.5s/league. League page
+  "Trade ideas" section + advisor `tradeIdeas` (advisor now names real offers instead of vague
+  archetypes). Guillotine currently has none (honest: no fair win-win exists).
+- **Dashboard "Generate all N leagues"** button (`dashboard/GenerateAll.tsx`), parallel, per-league status.
+- **Advisor → structured outputs** (`messages.parse` + `zodOutputFormat`), `max_tokens` 4000 → 16000,
+  `stop_reason` max_tokens/refusal handled. Found via Generate-all: Escalated's longer plan hit the
+  4000 cap (adaptive thinking shares it) → "Unterminated string in JSON". Route maxDuration 60 → 120.
+- Regression tests for the bench-projection bug (`benchOf`/`toBenchEntries`) + `describeDvp`. 81 tests.
+
 ## 2026-09-27 — advisor check-in (`scripts/advisor-check.ts`) + fixes
 
 Ran the real advisor (Sonnet 5) on all 3 leagues and reviewed it against its context:

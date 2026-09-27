@@ -2,6 +2,8 @@
 // prioritized set of concrete moves. Advise-only — it never acts.
 
 import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { z } from "zod";
 import type { LeagueContext } from "@/lib/agent/context";
 import { traceReason, traceDecide } from "@/lib/agent/trace";
 
@@ -27,20 +29,27 @@ function thinkingFor(model: AdvisorModel): { type: "adaptive" } | undefined {
   return model === "claude-haiku-4-5" ? undefined : { type: "adaptive" };
 }
 
-export type MoveType = "start_sit" | "waiver" | "trade" | "hold";
+// The response shape, enforced by structured outputs (the API guarantees the
+// JSON matches — no hand-parsing, no half-formed objects).
+const MoveSchema = z.object({
+  priority: z.number().int().describe("1 = do this first"),
+  type: z.enum(["start_sit", "waiver", "trade", "hold"]),
+  title: z.string().describe('Short imperative, e.g. "Start Bucky Irving over Travis Etienne"'),
+  detail: z.string().describe("1-2 sentence rationale grounded in the numbers"),
+  confidence: z.enum(["high", "medium", "low"]),
+});
+const AdvisorResultSchema = z.object({
+  summary: z.string().describe("One-sentence headline of the week's plan"),
+  moves: z.array(MoveSchema),
+});
 
-export interface Move {
-  priority: number; // 1 = do this first
-  type: MoveType;
-  title: string; // short imperative, e.g. "Start Bucky Irving over Travis Etienne"
-  detail: string; // the reasoning, grounded in the numbers
-  confidence: "high" | "medium" | "low";
-}
+export type Move = z.infer<typeof MoveSchema>;
+export type MoveType = Move["type"];
+export type AdvisorResult = z.infer<typeof AdvisorResultSchema>;
 
-export interface AdvisorResult {
-  summary: string;
-  moves: Move[];
-}
+// Room for adaptive thinking plus the answer. The old 4000 cap let thinking
+// crowd out the reply, truncating the JSON mid-string on longer plans.
+const MAX_TOKENS = 16000;
 
 const SYSTEM = `You are a sharp, no-nonsense fantasy football analyst giving a manager their weekly action plan.
 
@@ -52,7 +61,7 @@ Your job: produce a PRIORITIZED list of concrete moves the manager should make t
 - Cover three kinds of moves where warranted:
   1. start_sit — lineup changes implied by the optimal lineup vs. what's set, and genuine close calls worth flagging. If shouldStart/shouldSit are non-empty, ALWAYS include a start_sit move naming each swap, however small the gain (it's free points) — never describe the current lineup as already optimal when they are non-empty.
   2. waiver — the best available adds; name the player, the suggestedBid provided (and its faabRange — calibrated on this league's real bids: the low end is the median winning bid (wins about half the time), the high end wins ~80% of the time; never invent a higher number. hotAdd/contestedShare say how likely a fight is), and which bench player to drop. Choose drops by rest-of-season worth, not this week: pick from positions where you have surplus, the bench player with the lowest marketValue (break ties by lower proj). NEVER drop a player just because he is injured or projects 0 this week if his marketValue is meaningful relative to the rest of the bench — a Doubtful/Out starter is a lineup problem, not a drop candidate. Cite the marketValue when you name the drop.
-  3. trade — only if the roster clearly has a positional surplus and a need, suggest the archetype of trade to pursue (e.g. "trade WR depth for a starting RB"); keep it directional and grounded in market values. Skip if nothing stands out.
+  3. trade — use "tradeIdeas": concrete offers already checked to be fair by market value AND to improve both lineups over the next few weeks. If it's non-empty, propose the best one or two by name (partner, give, get) and cite yourGainPtsTotal/theirGainPtsTotal — these are TOTALS across horizonWeeks, not per-week figures — and the values. If it's empty, do not invent a specific offer; at most mention a directional idea (e.g. "shop RB depth for WR") with low confidence, or skip trades.
 - If a "survival" section is present this is a GUILLOTINE (play-the-field) league: there is NO head-to-head opponent, and the single lowest weekly total is eliminated. Optimize purely to maximize this week's projected total — every start/sit point matters more than usual, and upside plays are worth more when your cushion is thin. Reference the cushion above the elimination line and the survival probability, and raise urgency (and confidence on lineup fixes) when the cushion is small or negative. Do NOT talk about beating a specific opponent.
 - Use "outlook" for roster construction: if a position is thin (no bench behind the dedicated starters) or a near-term bye leaves a starting slot unfilled ("nextByeCrunchWeek"), prioritize a waiver add or trade to shore it up, and name the week. Don't invent byes not listed there.
 - "news" (may be empty) is a short list of real YouTube items already matched to a specific rostered or waiver-relevant player — use it only to add real-world color to a move you're already making for numeric reasons, never as the sole reason to start/sit or add someone, and never repeat more than the gist of a title/summary. Do not reference "news" items about players who aren't already part of your recommendation.
@@ -61,25 +70,7 @@ Your job: produce a PRIORITIZED list of concrete moves the manager should make t
 - If the lineup is already optimal and there are no strong adds, say so plainly with a single "hold" move — do not manufacture busywork.
 - Be specific and concise: name players, cite projections and FAAB dollars, one or two sentences per move.
 - Order moves by real impact (biggest point/roster improvement first). Assign priority 1..N.
-
-Respond with ONLY a JSON object, no prose, no code fences, matching exactly:
-{"summary": "<one sentence headline of the week's plan>", "moves": [{"priority": <int>, "type": "start_sit"|"waiver"|"trade"|"hold", "title": "<short imperative>", "detail": "<1-2 sentence rationale with numbers>", "confidence": "high"|"medium"|"low"}]}`;
-
-function extractJson(text: string): AdvisorResult {
-  let t = text.trim();
-  // Strip a ```json ... ``` fence if the model added one.
-  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fence) t = fence[1].trim();
-  // Otherwise grab the outermost object.
-  if (!t.startsWith("{")) {
-    const s = t.indexOf("{");
-    const e = t.lastIndexOf("}");
-    if (s >= 0 && e > s) t = t.slice(s, e + 1);
-  }
-  const parsed = JSON.parse(t) as AdvisorResult;
-  if (!parsed || !Array.isArray(parsed.moves)) throw new Error("Advisor returned no moves.");
-  return parsed;
-}
+- Return a one-sentence summary headline and the prioritized moves.`;
 
 export async function generateRecommendations(
   context: LeagueContext,
@@ -91,13 +82,20 @@ export async function generateRecommendations(
   const client = new Anthropic();
   const thinking = thinkingFor(model);
   const startedAt = Date.now();
-  const response = await client.messages.create({
+  const response = await client.messages.parse({
     model,
-    max_tokens: 4000,
+    max_tokens: MAX_TOKENS,
     ...(thinking ? { thinking } : {}),
     system: SYSTEM,
     messages: [{ role: "user", content: JSON.stringify(context) }],
+    output_config: { format: zodOutputFormat(AdvisorResultSchema) },
   });
+  if (response.stop_reason === "max_tokens") {
+    throw new Error(`Advisor ran out of room (${MAX_TOKENS} tokens) before finishing — try again or pick another model.`);
+  }
+  if (response.stop_reason === "refusal") {
+    throw new Error("The model declined to produce recommendations for this request.");
+  }
 
   // The model's reasoning comes back as "thinking" blocks (when enabled). We
   // don't store it, but we surface it to the terminal trace before dropping it.
@@ -107,14 +105,8 @@ export async function generateRecommendations(
     .join("\n");
   traceReason(reasoning);
 
-  const text = response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
-  if (!text) throw new Error("Advisor returned an empty response.");
-
-  const result = extractJson(text);
+  const result = response.parsed_output;
+  if (!result) throw new Error("Advisor returned a response that didn't match the expected shape.");
   traceDecide(
     result,
     response.usage ? { input: response.usage.input_tokens, output: response.usage.output_tokens } : null,

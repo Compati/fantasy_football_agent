@@ -17,7 +17,7 @@ interface RecData {
   model?: string;
 }
 
-const MODEL_OPTIONS = [
+export const MODEL_OPTIONS = [
   { id: "claude-sonnet-5", label: "Sonnet 5" },
   { id: "claude-opus-5", label: "Opus 5" },
   { id: "claude-haiku-4-5", label: "Haiku 4.5" },

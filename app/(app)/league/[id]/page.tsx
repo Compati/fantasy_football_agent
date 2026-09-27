@@ -14,6 +14,7 @@ import type { PlayerMatchup } from "@/lib/features/opponent";
 import type { FaabAdvice } from "@/lib/features/waivers";
 import { InjuryBadge } from "@/components/InjuryBadge";
 import { TradeAnalyzer } from "./TradeAnalyzer";
+import { tradeIdeasForTeam, type TfPlayer } from "@/lib/features/trade-finder";
 import { Recommendations } from "./Recommendations";
 
 export const dynamic = "force-dynamic";
@@ -58,12 +59,13 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const [startSit, waivers, matchup, survival, outlook] = await Promise.all([
+  const [startSit, waivers, matchup, survival, outlook, trades] = await Promise.all([
     startSitForTeam(myTeam.id),
     waiverTargets(myTeam.id, { limit: 15 }),
     getMatchup(myTeam.id).catch(() => null),
     getSurvival(myTeam.id).catch(() => null),
     rosterOutlook(myTeam.id).catch(() => null),
+    tradeIdeasForTeam(myTeam.id).catch(() => null),
   ]);
 
   const contextIds = [
@@ -464,6 +466,35 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
       )}
 
       {/* Trade analyzer */}
+      {trades && (
+        <section className="rounded-xl border border-border bg-surface p-4 mb-5">
+          <h2 className="font-medium mb-1">Trade ideas</h2>
+          <p className="text-xs text-muted mb-3">
+            Fair by market value, and both lineups get better over weeks {trades.horizon[0]}–
+            {trades.horizon[trades.horizon.length - 1]} (byes and
+            injuries counted) — so they&apos;re worth actually proposing.
+          </p>
+          {trades.ideas.length === 0 ? (
+            <p className="text-sm text-muted">No fair trade improves both lineups right now.</p>
+          ) : (
+            <ul className="space-y-2">
+              {trades.ideas.map((t, i) => (
+                <li key={i} className="text-sm">
+                  <span className="text-muted">with {t.partnerName}:</span> give{" "}
+                  <span className="font-medium">{tradeSide(t.give)}</span> → get{" "}
+                  <span className="font-medium">{tradeSide(t.get)}</span>
+                  <div className="text-xs text-muted">
+                    <span className="text-good">you +{t.myGain} pts</span> · them +{t.theirGain} pts over{" "}
+                    {trades.horizon.length} weeks · value {t.giveValue.toLocaleString()} for{" "}
+                    {t.getValue.toLocaleString()}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       <TradeAnalyzer leagueId={league.id} myRoster={myRoster} otherPlayers={otherPlayers} />
     </main>
   );
@@ -522,3 +553,5 @@ function faabTitle(f: FaabAdvice): string {
     f.contestedShare != null ? ` · ${Math.round(f.contestedShare * 100)}% of them had a competing bid` : "";
   return `${FAAB_TIER_LABEL[f.tier]} tier · based on ${basis}${contest}`;
 }
+
+const tradeSide = (ps: TfPlayer[]) => ps.map((p) => `${p.name} (${p.position})`).join(" + ");

@@ -11,7 +11,8 @@ import {
 } from "@/lib/agent/advisor";
 import { traceStart, traceGather } from "@/lib/agent/trace";
 
-export const maxDuration = 60;
+// A full plan with adaptive thinking can take ~30-50s; leave headroom.
+export const maxDuration = 120;
 
 // POST { teamId } -> generate (and cache) the advisor's moves for that team.
 export async function POST(req: Request) {

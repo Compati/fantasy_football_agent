@@ -3,7 +3,8 @@
 // never sees raw APIs, only these vetted numbers.
 
 import { prisma } from "@/lib/db";
-import { startSitForTeam } from "@/lib/features/startsit";
+import { startSitForTeam, type LineupPlayer, type SlotAssignment } from "@/lib/features/startsit";
+import { tradeIdeasForTeam } from "@/lib/features/trade-finder";
 import { waiverTargets } from "@/lib/features/waivers";
 import { getSurvival } from "@/lib/features/survival";
 import { rosterOutlook } from "@/lib/features/roster";
@@ -85,6 +86,18 @@ export interface LeagueContext {
     recYdsLine: number | null;
     anytimeTdProb: number | null; // 0-1
   }[];
+  // Concrete proposable trades: fair by market value and improving BOTH
+  // lineups over the next few weeks (lib/features/trade-finder.ts).
+  tradeIdeas: {
+    partner: string;
+    give: string[];
+    get: string[];
+    yourGainPtsTotal: number; // TOTAL over horizonWeeks (not per week)
+    theirGainPtsTotal: number;
+    giveValue: number;
+    getValue: number;
+    horizonWeeks: number;
+  }[];
   dataAvailable: string[];
 }
 
@@ -93,11 +106,12 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
     where: { id: teamId },
     include: { league: true, roster: true },
   });
-  const [ss, wv, survival, outlook] = await Promise.all([
+  const [ss, wv, survival, outlook, trades] = await Promise.all([
     startSitForTeam(teamId),
     waiverTargets(teamId, { limit: 12 }),
     getSurvival(teamId).catch(() => null),
     rosterOutlook(teamId).catch(() => null),
+    tradeIdeasForTeam(teamId, 3).catch(() => null),
   ]);
 
   const contextIds = [
@@ -112,8 +126,7 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
   const fmt = team.league.ppr === 1 ? "PPR" : team.league.ppr === 0.5 ? "Half-PPR" : "Standard";
   const sf = team.league.numQbs === 2 ? " Superflex" : "";
 
-  const startIds = new Set(ss.lineup.map((a) => a.player?.sleeperId).filter(Boolean));
-  const benchPlayers = ss.players.filter((p) => !startIds.has(p.sleeperId));
+  const benchPlayers = benchOf(ss.players, ss.lineup);
   const benchValues = new Map(
     (
       await prisma.tradeValue.findMany({
@@ -128,13 +141,7 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       })
     ).map((v) => [v.sleeperId, v.value]),
   );
-  const bench = benchPlayers.map((p) => ({
-    player: p.name,
-    position: p.position,
-    proj: p.proj,
-    marketValue: benchValues.get(p.sleeperId) ?? 0,
-    injuryStatus: p.injuryStatus ?? null,
-  }));
+  const bench = toBenchEntries(benchPlayers, benchValues);
 
   return {
     league: {
@@ -229,8 +236,18 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
       recYdsLine: p.recYdsLine,
       anytimeTdProb: p.anytimeTdProb != null ? Math.round(p.anytimeTdProb * 100) / 100 : null,
     })),
+    tradeIdeas: (trades?.ideas ?? []).map((t) => ({
+      partner: t.partnerName,
+      give: t.give.map((p) => `${p.name} (${p.position})`),
+      get: t.get.map((p) => `${p.name} (${p.position})`),
+      yourGainPtsTotal: t.myGain,
+      theirGainPtsTotal: t.theirGain,
+      giveValue: t.giveValue,
+      getValue: t.getValue,
+      horizonWeeks: trades!.horizon.length,
+    })),
     dataAvailable: [
-      "consensus projections (Sleeper + ESPN)",
+      "consensus projections (Sleeper + ESPN + CBS + FFToday)",
       "FantasyCalc market values",
       "current rosters for all teams in the league",
       ...(news.length > 0 ? ["YouTube community context"] : []),
@@ -239,8 +256,26 @@ export async function buildLeagueContext(teamId: string): Promise<LeagueContext>
   };
 }
 
-// "DET allows the 1st-most PPR points to QBs (of 32; easiest matchup)"
-function describeDvp(opponent: string, rank: number, position: string): string {
+// Bench = rostered players not in the optimal lineup, with their OWN
+// projections. (Regression: bench players were once looked up in the lineup,
+// which by definition doesn't contain them, so every bench proj was 0.)
+export function benchOf(players: LineupPlayer[], lineup: SlotAssignment[]): LineupPlayer[] {
+  const startIds = new Set(lineup.map((a) => a.player?.sleeperId).filter(Boolean));
+  return players.filter((p) => !startIds.has(p.sleeperId));
+}
+
+export function toBenchEntries(bench: LineupPlayer[], values: Map<string, number>): LeagueContext["bench"] {
+  return bench.map((p) => ({
+    player: p.name,
+    position: p.position,
+    proj: p.proj,
+    marketValue: values.get(p.sleeperId) ?? 0,
+    injuryStatus: p.injuryStatus ?? null,
+  }));
+}
+
+// "DET allows the 1st-most PPR points to QBs (of 32; easy matchup)"
+export function describeDvp(opponent: string, rank: number, position: string): string {
   const ord = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
   const ease = rank <= 6 ? "easy matchup" : rank >= 27 ? "hard matchup" : "average matchup";
   return `${opponent} allows the ${ord(rank)}-most PPR points to ${position}s (of 32; ${ease})`;
