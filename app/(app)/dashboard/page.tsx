@@ -69,9 +69,17 @@ export default async function Dashboard({
 
   return (
     <main className="flex-1 p-6 max-w-5xl mx-auto w-full">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold">Fantasy Agent</h1>
-        <p className="text-sm text-muted">Signed in as {user.email}.</p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Fantasy Agent</h1>
+          <p className="text-sm text-muted">Signed in as {user.email}.</p>
+        </div>
+        <Link
+          href="/agent"
+          className="rounded-md bg-accent text-[var(--accent-fg)] px-4 py-2 text-sm font-medium hover:opacity-90"
+        >
+          Ask the agent →
+        </Link>
       </header>
 
       {yahoo && (

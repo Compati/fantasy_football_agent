@@ -1,5 +1,28 @@
 # Dev log
 
+## 2026-09-29 — "Ask the agent": a real tool-use agent loop (class mini-project)
+
+Until now the "agent" was a fixed pipeline (build all context → one `messages.parse`). Added a
+hand-rolled agent loop where Claude picks tools itself: `lib/agent/tools.ts` (9 read-only tools
+wrapping existing features), `lib/agent/loop.ts` (`messages.create` + tools, ≤10 turns, parallel tool
+execution, tool errors returned as `is_error`), `app/api/agent/route.ts` (NDJSON stream of tool calls +
+answer), `/agent` chat page (live tool-call list, follow-ups, model picker) linked from the dashboard,
+terminal trace (`traceAgent*`), `scripts/agent-check.ts` (`--tools` smoke test). Live-tested on wk 4:
+cross-league question → 7 calls/3 turns/14 s, correct. Fixed along the way: null market value read as
+"worthless" → agent said drop Achane (IR) → tools now emit an explicit "unknown" string + prompt rule;
+added bench marketValue to `get_lineup_advice` (7 → 4 tool calls). Full write-up, agent-vs-chatbot
+explanation and presentation outline: **docs/agent.md**. 84 tests.
+docs/agent.md also has the pipeline → agent history (8 stages) and a course-requirements checklist
+from the Class 4 slides.
+**Printout (Class 4 "make it say what it's doing"):** each turn prints 🧠 the model's one-line plan
+(prompted), 🔧 its tool calls, ↳ a readable summary per result (`SUMMARIZE` in tools.ts; display
+only). Chat page shows the same timeline. The printout exposed a misread → renamed lineup keys
+`shouldStart/shouldSit` → `moveIntoLineup/moveToBench`; player search now ranks projected, active
+players first. README gained "The agent" section (problem / how it works / how to run).
+**Next steps** (full list in docs/agent.md): slide deck + timed rehearsal; demo anonymizing flag +
+backup run; LLM-as-judge pass; agent eval set (final project); scheduled autonomous mode; deploy;
+prompt caching; course repo. UI timeline not yet eyeballed in a browser (pane refused localhost).
+
 ## 2026-09-27 (latest) — trade ideas: near term vs rest of season
 
 Trade finder now searches two windows: **near** (this wk + next 2) and **rest of season** (now →

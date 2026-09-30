@@ -80,6 +80,56 @@ export function traceReason(thinking: string) {
   for (const line of thinking.trim().split("\n")) log("   │ " + line);
 }
 
+// ---- Agent loop (lib/agent/loop.ts): one line per tool call, then the answer.
+
+export function traceAgentStart(question: string, modelLabel: string) {
+  if (!traceEnabled()) return;
+  log("\n" + RULE);
+  log(`🤖 AGENT RUN · model: ${modelLabel}`);
+  log(`   Q: ${question}`);
+}
+
+// What the model decided this turn: its one-line plan and the tool calls it chose.
+export function traceAgentDecide(
+  turn: number,
+  plan: string,
+  calls: { name: string; input: Record<string, unknown> }[],
+) {
+  if (!traceEnabled()) return;
+  log(`
+   ── turn ${turn} ──`);
+  if (plan) log(`   🧠 ${plan}`);
+  for (const c of calls) {
+    const args = Object.entries(c.input)
+      .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+      .join(", ");
+    log(`   🔧 ${c.name}(${args})`);
+  }
+}
+
+// What came back from one tool, as a human-readable line.
+export function traceAgentResult(name: string, summary: string, isError: boolean, ms: number) {
+  if (!traceEnabled()) return;
+  log(`      ${isError ? "⚠️ " : "↳"} ${name}: ${summary} · ${ms}ms`);
+}
+
+export function traceAgentDone(
+  answer: string,
+  turns: number,
+  toolCalls: number,
+  input: number,
+  output: number,
+  ms: number,
+) {
+  if (!traceEnabled()) return;
+  log(
+    `\n   ✅ answered after ${turns} turn(s), ${toolCalls} tool call(s) · ${(ms / 1000).toFixed(1)}s · ` +
+      `${input.toLocaleString()} in / ${output.toLocaleString()} out tokens`,
+  );
+  for (const line of answer.split("\n")) log("   │ " + line);
+  log(RULE + "\n");
+}
+
 export function traceDecide(result: AdvisorResult, usage: { input: number; output: number } | null, ms: number) {
   if (!traceEnabled()) return;
   const cost = usage ? ` · ${usage.input.toLocaleString()} in / ${usage.output.toLocaleString()} out tokens` : "";

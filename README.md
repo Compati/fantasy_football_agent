@@ -8,6 +8,34 @@ free-agent adds, and trade evaluation**.
 **Advise-only:** the agent recommends; you make the moves in the Yahoo/Sleeper apps. Yahoo access
 is read-only — no code ever sets a lineup or submits a claim.
 
+## The agent (class mini-project)
+
+**Problem:** I manage teams in several fantasy leagues with different formats. Every week each one
+needs lineup, waiver/FAAB, and trade decisions, and the data behind them is scattered across four
+projection sites, trade-value markets, Vegas lines and each league's bidding history. I was leaving
+points on the bench and overpaying on waivers.
+
+**What it does:** ask a question in plain English. The agent decides which of its 9 read-only tools
+to call (lineup optimizer, matchup / Guillotine survival odds, waiver targets with FAAB bids
+calibrated on the league's real past bids, player lookup, trade finder, trade evaluator, bye-week
+outlook, news), reads the results, calls more if it needs to, and answers from the numbers.
+
+**How it works:** a hand-rolled loop, no framework (`lib/agent/loop.ts`): send the conversation +
+tool definitions to Claude → run whatever tools it asks for (`lib/agent/tools.ts`) → send the results
+back → repeat until it answers without asking for a tool (10-turn cap). Each step is printed: 🧠 what
+it decided, 🔧 which tools, ↳ what came back.
+
+**Run it** (terminal, no UI needed):
+
+```powershell
+npx tsx scripts/phase2-check.ts                                    # refresh this week's data
+npx tsx scripts/agent-check.ts "Which of my leagues needs the most attention this week?"
+npx tsx scripts/agent-check.ts --tools                             # test every tool, no LLM calls
+```
+
+Or in the app: dashboard → **Ask the agent →**. Needs `ANTHROPIC_API_KEY` in `.env`.
+Design notes, the pipeline → agent history, and what verification caught: [docs/agent.md](docs/agent.md).
+
 ## Stack
 
 Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Prisma 6 · NextAuth v5 ·
@@ -61,7 +89,9 @@ FantasyCalc→catalog id join rate, and a sample consensus blend.
   prioritized list of moves per league (start/sit, waiver + FAAB, trade angles), grounded in the
   numbers; cross-league digest on the dashboard. Model selectable — Sonnet 5 (default) / Opus 5 /
   Haiku 4.5. Advise-only.
-- **Phase 4 — Reddit/YouTube context.** · **Phase 5 — player props, X, podcasts, Yahoo (blocked).**
+- **Phase 4 — YouTube context ✅** · **Phase 5 — player props ✅**; X, podcasts, Yahoo (blocked).
+- **Agent loop ✅** "Ask the agent": Claude picks tools itself (the Phase 3 advisor is a one-shot
+  pipeline; both remain). See [docs/agent.md](docs/agent.md).
 
 See `NOTES.md` for the running dev log + the detailed roadmap/next steps.
 
@@ -71,6 +101,7 @@ See `NOTES.md` for the running dev log + the detailed roadmap/next steps.
 npm run dev -- -p 3005                    # run the app (http://localhost:3005)
 npx tsx scripts/connect-sleeper.ts <user> # connect a Sleeper account
 npx tsx scripts/phase2-check.ts           # refresh projections/values + print start/sit
+npx tsx scripts/agent-check.ts "question" # ask the agent from the terminal
 npm run probe                             # credential-free data-source health check
 npm test                                  # unit tests
 ```
