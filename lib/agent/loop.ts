@@ -26,6 +26,13 @@ export type AgentEvent =
   | { type: "done"; turns: number; toolCalls: number; inputTokens: number; outputTokens: number; ms: number }
   | { type: "error"; message: string };
 
+export interface ToolRecord {
+  name: string;
+  input: Record<string, unknown>;
+  content: string;
+  isError: boolean;
+}
+
 // Prior chat turns (plain text) so follow-up questions have context.
 export interface ChatTurn {
   role: "user" | "assistant";
@@ -46,7 +53,7 @@ Rules for the answer:
 - Drops: choose by rest-of-season market value at a position of surplus, not by this week's projection — never drop a valuable player just because he's hurt this week. An "unknown" market value means no data (usual for IR players), NOT low value — don't pick that player as the drop; if he's the only obvious cut, say it depends on whether his injury is season-ending and give a safe alternative.
 - Trades: prefer ideas that help on both windows; flag "helps now, costs you later".
 - News is color only, never the sole reason for a move.
-- You only advise — you can't make moves. Tell the manager what to do.
+- You only advise — you can't make moves. Tell the manager what to do. If they ask you to make a move for them (set a lineup, put in a claim, send a trade), say first, in plain words, that you can't do that and they'll need to do it in the app themselves; then give the recommendation.
 - Be concise: lead with the answer, then the key numbers behind it. Use short bullets when covering multiple leagues or moves.`;
 
 function thinkingFor(model: AdvisorModel): { type: "adaptive" } | undefined {
@@ -59,6 +66,8 @@ export async function runAgent(
   ctx: ToolContext,
   onEvent: (e: AgentEvent) => void,
   model: AdvisorModel = DEFAULT_ADVISOR_MODEL,
+  // Evals only: the full tool output the model saw (events carry just the summary).
+  onToolOutput?: (call: ToolRecord) => void,
 ): Promise<void> {
   const client = new Anthropic();
   const thinking = thinkingFor(model);
@@ -126,6 +135,7 @@ export async function runAgent(
         const { content, summary, isError } = await runTool(tu.name, input, ctx);
         const ms = Date.now() - t0;
         toolCalls++;
+        onToolOutput?.({ name: tu.name, input, content, isError });
         // ...and what came back, in one readable line.
         traceAgentResult(tu.name, summary, isError, ms);
         onEvent({ type: "tool_result", id: tu.id, name: tu.name, ok: !isError, summary, ms });

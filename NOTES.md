@@ -1,5 +1,32 @@
 # Dev log
 
+## 2026-10-01 — agent eval set + LLM judge; stale-roster fix; presentation cheat sheet
+
+**Evals.** `scripts/agent-eval.ts` runs 9 fixed questions through `runAgent` and scores each with code
+checks (`lib/agent/eval-checks.ts`, pure + unit-tested) and an LLM judge (`lib/agent/judge.ts`, Opus 5
+grading the Sonnet 5 agent on grounded / followsRules / answersQuestion / meetsExpectation, with quoted
+evidence). A case passes only if everything passes; run passes at 80%, exit 1 below. Flags: case ids,
+`--model`, `--no-judge`, `--trace`. Transcripts → `evals/results/` (gitignored, real league data).
+`runAgent` gained an optional `onToolOutput` hook so evals see full tool outputs (events carry only the
+summary). First run 7/9: (1) asked to "put in a waiver claim", the agent never said it can't → prompt
+rule added; (2) judge failed "high end wins ~80%" as invented because it couldn't see tool descriptions
+→ judge now gets them; (3) $-grounding check missed "20 FAAB" phrasing → matches both. Re-run 9/9 (one
+run per case: a regression net, not a reliability number).
+
+**Stale rosters.** Alex's demo run advised on old rosters (Achane, already dropped, still "on the
+team"; claimed players still "available"). Cause: only the web pages + daily cron synced rosters;
+`phase2-check.ts` refreshes projections/values only. Fix: `ensureRostersFresh` in `tools.ts`: every
+tool call re-syncs leagues older than 5 min via `refreshSleeperLeagueIfStale`, one sync at a time per
+user (parallel tool calls share the in-flight promise), falls back to the stored copy if Sleeper is
+down. Verified on the tools directly (Achane now a free agent; swaps + waiver lists changed). Not yet
+re-verified: full demo question and eval set after this change.
+
+**Docs.** `docs/agent.md` Stage 9 + requirements table; new `docs/presentation-cheatsheet.md` (folder
+layout, "how was it built / what tools" answers, terminal prep steps). 88 tests.
+
+**Next:** slide deck + timed rehearsal; anonymize flag; backup demo run; course repo; then autonomous
+scheduled mode, deploy.
+
 ## 2026-09-29 — "Ask the agent": a real tool-use agent loop (class mini-project)
 
 Until now the "agent" was a fixed pipeline (build all context → one `messages.parse`). Added a

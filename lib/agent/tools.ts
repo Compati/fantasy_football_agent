@@ -10,6 +10,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
 import { getNflState } from "@/lib/sleeper";
+import { refreshSleeperLeagueIfStale } from "@/lib/ingest/sleeper";
 import { normalizeName } from "@/lib/players";
 import { blendProjections } from "@/lib/projections/consensus";
 import { injuryAdjustedProj } from "@/lib/features/injury";
@@ -47,7 +48,37 @@ async function currentWeek(): Promise<number> {
 // League resolution: the model refers to leagues by name ("Escalated"); map
 // that to the user's own team in that league. Only the user's leagues match.
 
+// The tools read rosters from our DB copy, which only the web pages and the
+// daily cron used to refresh — from the terminal the agent kept advising on
+// days-old rosters (a dropped player still "on the team", claimed players
+// still "available"). Re-pull any league older than this before answering.
+const ROSTER_STALE_MS = 5 * 60 * 1000;
+const rosterSync = new Map<string, Promise<void>>();
+
+// One sync at a time per user: parallel tool calls share the in-flight promise
+// (a roster sync deletes + re-creates spots, so two at once would collide).
+function ensureRostersFresh(userId: string): Promise<void> {
+  let p = rosterSync.get(userId);
+  if (!p) {
+    p = (async () => {
+      const leagues = await prisma.league.findMany({
+        where: { platform: "sleeper", connection: { userId } },
+        select: { id: true, name: true },
+      });
+      for (const l of leagues) {
+        // Sleeper unreachable → answer from the copy we have rather than fail.
+        await refreshSleeperLeagueIfStale(l.id, ROSTER_STALE_MS).catch((e) =>
+          console.warn(`Roster refresh failed for ${l.name}: ${(e as Error).message}`),
+        );
+      }
+    })().finally(() => rosterSync.delete(userId));
+    rosterSync.set(userId, p);
+  }
+  return p;
+}
+
 async function myTeams(userId: string) {
+  await ensureRostersFresh(userId);
   return prisma.team.findMany({
     where: { isMine: true, league: { connection: { userId } } },
     include: { league: true },

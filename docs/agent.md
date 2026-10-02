@@ -105,6 +105,8 @@ cron gives the same loop the goal "check all my leagues, alert me if anything's 
 - UI: `npm run dev` → dashboard → **Ask the agent →** (tool calls stream in live as the agent works).
 - Terminal: `npx tsx scripts/agent-check.ts "your question" [model]` (prints each tool call + answer);
   `npx tsx scripts/agent-check.ts --tools` smoke-tests every tool with no LLM calls.
+- Evals: `npx tsx scripts/agent-eval.ts` (all 9 cases + judge, ~1 min); add case ids to run a few,
+  `--no-judge` for code checks only, `--trace` to watch each run's tool calls.
 - Needs `ANTHROPIC_API_KEY` in `.env`; fresh data via `npx tsx scripts/phase2-check.ts`.
 
 ## From pipeline to agent: how it got here
@@ -172,6 +174,52 @@ same timeline. Watching the printout is what exposed the "correctly benched" mis
 which is exactly the slide's point: *if you can't see the steps, a good answer and a lucky one look
 the same.*
 
+**Stage 9: an eval set and an LLM judge (Oct 1).** `scripts/agent-eval.ts` runs 9 fixed questions
+through the same loop and scores each two ways:
+- **Code checks** (`lib/agent/eval-checks.ts`, unit-tested) for what can be stated exactly: the right
+  tool was called, every $/FAAB amount in the answer is a number a tool returned, every lineup swap is
+  named, the survival % is the tool's, a tool error was recovered from, tool calls stay under a cap.
+- **A judge model** (`lib/agent/judge.ts`, Opus 5 grading the Sonnet 5 agent) for what needs reading:
+  grounded / follows the rules / answers the question / meets the case's written expectation, each
+  pass-fail with quoted evidence. It sees the question, every tool call with its full output, and the
+  answer.
+
+A case passes only if every check and every judge criterion passes; the run passes at 80% and exits 1
+below that, so a prompt or tool change that makes the agent worse shows up as a failure.
+
+| Case | What it probes |
+|---|---|
+| `cross-league` | fans out over all leagues before picking one |
+| `partial-league-name` | "Escalated" resolves; every swap named |
+| `bad-league` | a league I'm not in: says so, doesn't analyze another one |
+| `faab-bid` | bid is the tool's suggestion / inside its range |
+| `drop-candidate` | drops by market value, never an "unknown"-value player |
+| `trade-eval` | yes/no consistent with `evaluate_trade` |
+| `unknown-player` | made-up player: no invented projection |
+| `advise-only` | asked to place a claim: says it can't |
+| `guillotine-survival` | cites survival %, no head-to-head talk |
+
+First run: **7/9 (78%), a fail.** What it caught:
+- **A real agent bug.** Asked to "go ahead and put in a waiver claim", the agent answered with the
+  target and bid but never said it can't place claims; it read like it was handling it. Both the regex
+  check and the judge flagged it. Fix: one sentence in the system prompt (say you can't first, then
+  recommend).
+- **A judge bug.** The judge failed two answers as ungrounded for saying the top of a bid range "wins
+  ~80% of the time". That figure is real: it's in the tool's *description*, which the agent sees and
+  the judge didn't. Fix: give the judge the tool descriptions. The judge has to see what the agent saw,
+  or it grades honest answers as hallucinations.
+- **A weak check.** "Every $ amount came from a tool" passed trivially because the agent wrote
+  "20 FAAB", not "$20". The check now matches both.
+
+Re-run after the fixes: **9/9.** One run per case, so this is a regression net, not a reliability
+number; the answers vary run to run.
+
+**Caught in a demo dry run (Oct 1): stale rosters.** The agent told me to bench a player I'd already
+dropped and to claim players already taken. The tools read rosters from the local DB, and only the web
+pages and a daily cron refreshed it; from the terminal nothing did. Now every tool call re-syncs any
+league older than 5 minutes from Sleeper first. Evals didn't catch this: they check the answer against
+the tool output, not the tool output against the world.
+
 **Lesson:** the hard part of an agent is the tools and the verification, not the loop. The loop is
 ~100 lines; the tools took a week and were only trustworthy because each was tested and backtested
 before an LLM ever saw its output.
@@ -192,8 +240,8 @@ From the rubric and the Class 4 slides 22–31 ("Your Mini-Project", "Five Minut
 | Run from a terminal with one line | ✅ `npx tsx scripts/agent-check.ts "question"` (slide example is `py -3 your_agent.py "question"`; same idea in TypeScript) |
 | Make it say what it's doing: print inside the loop what it decided and what came back | ✅ Each turn prints 🧠 the model's one-line plan, 🔧 the tool calls it chose (with arguments), then ↳ a readable one-line summary of each result (e.g. "Escalated Calls: vs ZynDesk, 123.7–120.4 projected, 53% to win"). Same timeline streams to the `/agent` page |
 | Understanding: "here's how I verified it and what I caught" | ✅ Strong: backtests, advisor check-in, tool smoke test, live runs; concrete catches (zeroed bench projections, 10x FAAB, matchup lean removed, Achane null-value bug) |
-| Verify: Read / Test / Judge (Class 4) | ✅ Read + Test done. ⚠️ **Judge not done:** no LLM-as-a-judge pass on the agent yet |
-| Evals (required for the final project; good to start now) | ⚠️ Backtests are evals for the features; **no eval set for the agent's answers yet.** Idea: 8–10 questions with known-correct properties (never drops an IR/unknown-value star; bid within the tool's range; resolves partial league names; recovers from a bad name; names every shouldStart swap), scored by code + a judge model, with a pass threshold |
+| Verify: Read / Test / Judge (Class 4) | ✅ All three. Judge = Opus 5 grading the Sonnet 5 agent on four criteria with quoted evidence (`lib/agent/judge.ts`); it caught the agent not saying it can't place a claim, and I caught the judge mis-grading because it couldn't see the tool descriptions |
+| Evals (required for the final project; good to start now) | ✅ Backtests for the features + a 9-case eval set for the agent's answers (`npx tsx scripts/agent-eval.ts`): code checks + judge, 80% pass threshold, exit code 1 below it. First run 7/9, 9/9 after fixes (Stage 9) |
 | Presentation: 30 s problem / 90 s build / 2 min demo / 30 s next, strictly timed | ⏳ Plan below follows this split |
 | A demo that breaks, handled well, is fine | ⏳ Plan: data refreshed that morning; backup = a saved terminal run of the same question |
 | Font up, window big, command typed before sharing | ⏳ Rehearsal checklist below |
@@ -233,16 +281,13 @@ Ordered by value for the Oct 12 presentation first, then the final project.
 2. **Demo safety:** refresh data the morning of; save a backup terminal run; decide whether to
    anonymize other managers' team names in the output (a `DEMO_ANON=1` flag that maps them to
    "Team 1…N").
-3. **LLM-as-a-judge pass** (Class 4 "Judge" step): a second model grades a handful of agent answers
-   against a written standard (grounded numbers only, bid within tool range, no unknown-value drops,
-   names every swap). Gives a "here's what the judge caught" line for Q&A.
+3. ~~LLM-as-a-judge pass~~ done Oct 1 (Stage 9).
 4. **Course repo:** copy/push the project + README section there (deferred by user for now).
 
 **Toward the final project**
-5. **Agent eval set** (required for the final project): ~10 questions with known-correct properties,
-   scored by code checks + the judge, a pass threshold, runnable as one script so regressions show.
-   Seed cases: the Achane unknown-value drop, the "correctly benched" misread, partial/bad league
-   names, a cross-league question, a trade evaluation.
+5. **Agent eval set:** done Oct 1 (Stage 9, 9 cases). To grow it: run each case several times for a
+   pass *rate* (answers vary run to run), add multi-turn follow-ups, and pin a fixture DB so cases
+   like the unknown-value drop don't depend on this week's rosters.
 6. **Autonomous mode:** a scheduled run (Wednesday morning after waivers process, Sunday pre-kickoff)
    that gives the same loop the goal "check all my leagues and flag anything urgent" and pushes an
    alert only when something matters (IR starter, thin cushion, big bench leak). Reuses `runAgent`.
@@ -259,7 +304,7 @@ Ordered by value for the Oct 12 presentation first, then the final project.
 | 0:30 | **Problem:** 3 leagues, different formats, weekly lineup/waiver/trade calls, data scattered across 4 projection sites + values + FAAB history. I was leaving points on the bench and overpaying FAAB. |
 | 1:30 | **Build:** tools first (tested + backtested), then the loop: model picks a tool → my code runs it → result goes back → repeat until it answers. One diagram. One line on pipeline vs agent ("my first version wasn't an agent; here's how I turned it into one"). One verification catch (Achane). |
 | 2:00 | **Live demo (terminal):** "Which of my leagues needs the most attention this week?" The room watches the printed tool calls fan out across leagues, then the answer. If time allows, a waiver/FAAB follow-up. |
-| 0:30 | **Next:** a scheduled version that runs Wednesdays with no prompt and alerts me; an eval set + LLM judge for the agent's answers. |
+| 0:30 | **Next:** a scheduled version that runs Wednesdays with no prompt and alerts me; grow the eval set (9 cases + an LLM judge today) into repeated runs with a pass rate. |
 
 **Rehearsal checklist:** refresh data (`npx tsx scripts/phase2-check.ts`) the morning of; terminal
 font up and maximized; command pre-typed; `ADVISOR_TRACE=1`; a saved backup run; time it under 5:00.

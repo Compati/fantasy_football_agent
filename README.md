@@ -31,6 +31,7 @@ it decided, 🔧 which tools, ↳ what came back.
 npx tsx scripts/phase2-check.ts                                    # refresh this week's data
 npx tsx scripts/agent-check.ts "Which of my leagues needs the most attention this week?"
 npx tsx scripts/agent-check.ts --tools                             # test every tool, no LLM calls
+npx tsx scripts/agent-eval.ts                                      # 9-case eval set: code checks + LLM judge
 ```
 
 Or in the app: dashboard → **Ask the agent →**. Needs `ANTHROPIC_API_KEY` in `.env`.

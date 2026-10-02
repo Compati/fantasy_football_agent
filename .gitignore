@@ -46,3 +46,6 @@ next-env.d.ts
 
 # Local HTTPS dev certificate (self-signed; for Yahoo OAuth redirect)
 /certs
+
+# Agent eval transcripts (real league data)
+/evals/results
