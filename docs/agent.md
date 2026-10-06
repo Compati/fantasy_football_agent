@@ -246,7 +246,7 @@ From the rubric and the Class 4 slides 22–31 ("Your Mini-Project", "Five Minut
 | A demo that breaks, handled well, is fine | ⏳ Plan: data refreshed that morning; backup = a saved terminal run of the same question |
 | Font up, window big, command typed before sharing | ⏳ Rehearsal checklist below |
 | Commit to course repo + README section | ✅ README "The agent" section (problem, how it works, how to run). ⏳ Course repo deferred |
-| Non-sensitive data only | ✅ My own leagues, no keys in the repo (`.env` gitignored). ⚠️ Other managers' team names appear in output; consider anonymizing for the demo |
+| Non-sensitive data only | ✅ My own leagues, no keys in the repo (`.env` gitignored). Other managers' team names can be hidden with `DEMO_ANON=1` (`lib/agent/anonymize.ts`) |
 
 ## Sample terminal run (what the demo looks like)
 
@@ -278,9 +278,8 @@ Ordered by value for the Oct 12 presentation first, then the final project.
 **Before Oct 12**
 1. **Slide deck** (5 slides max: problem, architecture diagram, pipeline→agent, verification catches,
    next) and a timed rehearsal under 5:00.
-2. **Demo safety:** refresh data the morning of; save a backup terminal run; decide whether to
-   anonymize other managers' team names in the output (a `DEMO_ANON=1` flag that maps them to
-   "Team 1…N").
+2. **Demo safety:** refresh data the morning of; save a backup terminal run; `DEMO_ANON=1` (built Oct 5)
+   maps other managers' team names to "Team 1…N" in every tool result.
 3. ~~LLM-as-a-judge pass~~ done Oct 1 (Stage 9).
 4. **Course repo:** copy/push the project + README section there (deferred by user for now).
 
@@ -303,7 +302,7 @@ Ordered by value for the Oct 12 presentation first, then the final project.
 |---|---|
 | 0:30 | **Problem:** 3 leagues, different formats, weekly lineup/waiver/trade calls, data scattered across 4 projection sites + values + FAAB history. I was leaving points on the bench and overpaying FAAB. |
 | 1:30 | **Build:** tools first (tested + backtested), then the loop: model picks a tool → my code runs it → result goes back → repeat until it answers. One diagram. One line on pipeline vs agent ("my first version wasn't an agent; here's how I turned it into one"). One verification catch (Achane). |
-| 2:00 | **Live demo (terminal):** "Which of my leagues needs the most attention this week?" The room watches the printed tool calls fan out across leagues, then the answer. If time allows, a waiver/FAAB follow-up. |
+| 2:00 | **Live demo (terminal):** "Find the league where I'm in the most trouble this week. Then fix it…" (the default of `agent-check.ts`). The room watches 5 to 7 turns: find the league, pull its lineup, hunt waivers, check news, answer. About 45 s, so no follow-up. |
 | 0:30 | **Next:** a scheduled version that runs Wednesdays with no prompt and alerts me; grow the eval set (9 cases + an LLM judge today) into repeated runs with a pass rate. |
 
 **Rehearsal checklist:** refresh data (`npx tsx scripts/phase2-check.ts`) the morning of; terminal

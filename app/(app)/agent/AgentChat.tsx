@@ -24,6 +24,7 @@ interface Exchange {
 }
 
 const EXAMPLES = [
+  "Find the league where I'm in the most trouble this week. Then fix it: set my best lineup, find a waiver pickup for my weakest starting spot with a bid and who to drop, and check the news on anyone you recommend.",
   "Which of my leagues needs the most attention this week, and why?",
   "Do I have any lineup mistakes set right now in any league?",
   "Who's the best waiver add in each of my FAAB leagues, and what should I bid?",

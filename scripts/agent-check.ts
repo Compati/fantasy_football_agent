@@ -1,11 +1,17 @@
 // Ask the agent a question from the terminal (same loop as the "Ask the agent"
 // page) and print every step — for testing and demos without the UI.
-//   npx tsx scripts/agent-check.ts "Which league needs the most attention?" [model]
+//   npx tsx scripts/agent-check.ts                      (the demo question)
+//   npx tsx scripts/agent-check.ts "Who should I start in Escalated?" [model]
 //   npx tsx scripts/agent-check.ts --tools   (smoke-test every tool, no LLM calls)
 import { prisma } from "@/lib/db";
 import { runAgent } from "@/lib/agent/loop";
 import { runTool } from "@/lib/agent/tools";
 import { isAdvisorModel, DEFAULT_ADVISOR_MODEL } from "@/lib/agent/advisor";
+
+// The demo question: each step depends on what the last one returned, so the
+// loop runs 5-7 turns (the old "which league needs the most attention?" took 3).
+const DEMO_QUESTION =
+  "Find the league where I'm in the most trouble this week. Then fix it: set my best lineup, find a waiver pickup for my weakest starting spot with a bid and who to drop, and check the news on anyone you recommend.";
 
 async function main() {
   const conn = await prisma.connection.findFirstOrThrow({ where: { platform: "sleeper" } });
@@ -36,7 +42,7 @@ async function main() {
     return;
   }
 
-  const question = process.argv[2] ?? "Which of my leagues needs the most attention this week, and why?";
+  const question = process.argv[2] ?? DEMO_QUESTION;
   const model = isAdvisorModel(process.argv[3]) ? process.argv[3] : DEFAULT_ADVISOR_MODEL;
   // The loop's terminal trace prints each tool call and the answer.
   process.env.ADVISOR_TRACE = "1";

@@ -1,5 +1,34 @@
 # Dev log
 
+## 2026-10-05 — demo anonymize flag; harder demo question
+
+**Demo question.** The old one ("Which of my leagues needs the most attention?") finished in 3 turns,
+too short to show the loop. Tried three harder ones live (one run each, `DEMO_ANON=1`, Sonnet 5):
+
+| Question | Turns | Calls | Time |
+|---|---|---|---|
+| Find the trouble league, then fix it (lineup, waiver + bid + drop, news) | 7 | 10 | 44s |
+| Game plan for the riskiest league (lineup, waiver, trade, news) | 5 | 9 | 49s |
+| "McConkey is hurt, what do I do across my leagues" | 4 | 10 | 35s |
+
+Picked the first: every step depends on the previous result, and in turn 5 it checked WR waivers on its
+own after RB/TE came back as non-upgrades. Now the default of `scripts/agent-check.ts` (no argument)
+and first example on the `/agent` page. The eval set's `cross-league` case keeps the old question.
+Costs ~46k input tokens per run and ~45 s of the 2:00 demo slot, so no follow-up question.
+
+**Anonymize flag.**
+
+`DEMO_ANON=1` hides other managers' team names for the presentation. `lib/agent/anonymize.ts` (pure,
+unit-tested): other teams become "Team 1…N" per league in roster-id order; `runTool` rewrites each
+tool result before the model sees it, so the names never reach the model, the printout or the answer.
+Whole string values only (a substring replace could mangle player names). My own team name and league
+names stay. Verified live: tool smoke test and the demo question both show "vs Team 10" / "vs Team 4";
+that run was also the first full demo question since the stale-roster fix (3 turns, 7 calls, 11.6s).
+The eval set has not been re-run since that fix. 90 tests.
+
+**Next:** slide deck + timed rehearsal (rehearse the new question a few times); backup demo run; course repo; then autonomous scheduled mode,
+deploy.
+
 ## 2026-10-01 — agent eval set + LLM judge; stale-roster fix; presentation cheat sheet
 
 **Evals.** `scripts/agent-eval.ts` runs 9 fixed questions through `runAgent` and scores each with code

@@ -22,6 +22,7 @@ import { getMatchup } from "@/lib/features/matchup";
 import { getSurvival } from "@/lib/features/survival";
 import { rosterOutlook } from "@/lib/features/roster";
 import { newsForPlayers } from "@/lib/features/news";
+import { anonymize, buildAliases, demoAnonEnabled } from "@/lib/agent/anonymize";
 import type { ProjectionRow } from "@/lib/types";
 
 export interface ToolContext {
@@ -496,6 +497,15 @@ export const TOOLS: AgentTool[] = [
 export const TOOL_DEFINITIONS: Anthropic.Tool[] = TOOLS.map((t) => t.definition);
 const byName = new Map(TOOLS.map((t) => [t.definition.name, t]));
 
+// Demo mode: other managers' team names → "Team N" (see anonymize.ts).
+async function teamAliases(userId: string) {
+  const teams = await prisma.team.findMany({
+    where: { league: { connection: { userId } } },
+    select: { name: true, externalId: true, isMine: true, league: { select: { name: true } } },
+  });
+  return buildAliases(teams.map((t) => ({ ...t, leagueName: t.league.name })));
+}
+
 // Run one tool call. Recoverable problems come back as { isError } so the
 // model can correct itself (e.g. retry with the right league name).
 export async function runTool(
@@ -506,7 +516,8 @@ export async function runTool(
   const tool = byName.get(name);
   if (!tool) return { content: `Unknown tool "${name}".`, summary: `unknown tool "${name}"`, isError: true };
   try {
-    const result = await tool.run(input, ctx);
+    let result = await tool.run(input, ctx);
+    if (demoAnonEnabled()) result = anonymize(result, await teamAliases(ctx.userId));
     let summary: string;
     try {
       summary = SUMMARIZE[name]?.(result as Json) ?? "done";

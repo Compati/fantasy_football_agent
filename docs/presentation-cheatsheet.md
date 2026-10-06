@@ -65,9 +65,26 @@ If they probe:
 Each tool has three parts in `tools.ts`: a name, a description the model reads to decide when to use
 it, and the function my code runs.
 
-**The demo question as an example.** For "Which of my leagues needs the most attention?" the agent
-typically calls `list_my_leagues`, then `get_lineup_advice` and `get_matchup` for all three leagues
-at once (six calls), then compares and answers. Nobody programmed that sequence; the model picked it.
+**The demo question** (it's the default, so `agent-check.ts` with no question runs it):
+
+> Find the league where I'm in the most trouble this week. Then fix it: set my best lineup, find a waiver pickup for my weakest starting spot with a bid and who to drop, and check the news on anyone you recommend.
+
+Each step depends on what the last one returned, so the agent has to keep looping. On Oct 5 it took
+7 turns, 10 tool calls, 44 seconds:
+
+1. `list_my_leagues`
+2. `get_matchup` for all three leagues at once
+3. picked the league with the worst odds, then `get_lineup_advice` + `get_roster_outlook` there
+4. `get_waiver_targets` for RB and TE
+5. saw those weren't upgrades and checked WR too (nobody asked it to; point this out)
+6. `get_player_news` on the players it was about to name
+7. the answer: lineup swap, waiver add with a bid, the drop, and "I can't make these moves for you"
+
+Nobody programmed that sequence; the model picked it, and it changes from run to run (expect 5 to 7
+turns, and a different league depending on the week).
+
+The old question ("Which of my leagues needs the most attention this week, and why?") only took 3
+turns: list, six calls at once, answer. It's still a good short follow-up for showing parallel calls.
 
 ## "How do you know it works?"
 
@@ -91,11 +108,17 @@ All commands run from the `fantasy-agent` folder in PowerShell.
    ```powershell
    npx tsx scripts/agent-check.ts --tools
    ```
-2. Full dry run of the demo question (about 15 seconds, three turns).
+2. Full dry run of the demo question (about 45 seconds, 5 to 7 turns). Run it two or three times:
+   the steps vary, and you should know roughly how long to narrate for.
    ```powershell
-   npx tsx scripts/agent-check.ts "Which of my leagues needs the most attention this week, and why?"
+   npx tsx scripts/agent-check.ts
    ```
-3. Decide about other managers' team names in the output (the anonymize flag isn't built).
+3. Decide about other managers' team names in the output. To hide them, set `DEMO_ANON=1` first:
+   every other team shows as "Team N" (your own team and league names stay). It lasts for that
+   terminal window, so set it again on the day.
+   ```powershell
+   $env:DEMO_ANON = "1"
+   ```
 
 ### The morning of
 
@@ -111,7 +134,7 @@ All commands run from the `fantasy-agent` folder in PowerShell.
    ```
 7. Save a backup run, then open the file to confirm it's legible. Don't commit it.
    ```powershell
-   npx tsx scripts/agent-check.ts "Which of my leagues needs the most attention this week, and why?" | Tee-Object demo-backup.txt
+   npx tsx scripts/agent-check.ts | Tee-Object demo-backup.txt
    ```
 8. Read that answer so you know which league it picked and why before you're in front of the room.
 
@@ -124,8 +147,8 @@ All commands run from the `fantasy-agent` folder in PowerShell.
 ### During the demo (2:00)
 
 12. Press Enter and narrate: 🧠 is the model's plan, 🔧 the tool calls it chose (point out the
-    six-call fan-out), ↳ what came back, then the answer with turn/tool/token counts.
-13. If there's time, a follow-up that shows a different tool:
+    three calls at once in turn 2, and any turn where it changes course), ↳ what came back, then the answer with turn/tool/token counts.
+13. The demo question takes about 45 seconds, so there's probably no time for more. If there is:
     ```powershell
     npx tsx scripts/agent-check.ts "Who's the best RB on waivers in Panini, and how much should I bid?"
     ```
