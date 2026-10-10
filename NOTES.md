@@ -1,5 +1,36 @@
 # Dev log
 
+## 2026-10-09 — repo tidy + README pass for the presentation
+
+No behavior change; docs, one test rename and a comment. Went through every file in the repo to check
+the layout before presenting (part of the grade is an organized repo and knowing what each file does).
+The layout held up; the README was the stale part.
+
+**README.**
+- Intro now says Sleeper only (it claimed Sleeper and Yahoo). New "Other platforms" note: Yahoo is
+  built (`lib/yahoo/`) but blocked by Yahoo's approval program; ESPN leagues are the more realistic
+  next platform (not built; projections from ESPN are already used, league access is separate work).
+- New "From pipeline to agent" subsection in the agent section: the first AI version was a data
+  pipeline with an LLM summarizing at the end (`context.ts` + `advisor.ts`); the agent reverses who
+  chooses the steps; both remain. Long version is still `docs/agent.md`.
+- New "The app around the agent" bridge: everything below it is what was built first and what the
+  agent runs on, the start of a larger app.
+- "How it fits together" rewritten. The old diagram named `yahoo.ts` and `reddit.ts` (neither exists)
+  and showed one projection source. Now a one-line flow plus a table of the six sources and clients.
+- New "Repo map" section (folder tree, one line per folder). Was only in the cheat sheet.
+- "18 unit tests" → 90.
+
+**Small cleanups.** `tests/features.test.ts` → `tests/trade.test.ts` (it only tests `trade.ts`; every
+other test is named after its module). `lib/agent/trace.ts` header now says it prints both the advisor
+and the agent loop. Deleted two empty untracked folders (`certificates/`, `types/`). 90 tests pass.
+
+**Looked at and left alone until after Oct 12:** `lib/agent/` holds both the agent and the older
+pipeline; `scripts/phase2-check.ts` is an opaque name for the data-refresh command (renaming touches
+the README, cheat sheet and agent.md); API clients sit loose in `lib/` while Yahoo has a folder.
+
+**Next:** test runs of the agent (smoke test, demo question a few times, eval set, which has still not
+been re-run since the stale-roster fix); slide deck + timed rehearsal; backup demo run; course repo.
+
 ## 2026-10-05 — demo anonymize flag; harder demo question
 
 **Demo question.** The old one ("Which of my leagues needs the most attention?") finished in 3 turns,

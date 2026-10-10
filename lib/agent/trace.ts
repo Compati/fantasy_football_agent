@@ -1,7 +1,10 @@
-// Terminal trace of what the advisor agent does, step by step. Prints to the
-// server console (the terminal running `npm run dev`) — nothing goes to the UI.
-// Meant for demos/teaching: it narrates the three stages of a run — GATHER the
-// grounded data, REASON (the model's own thinking), DECIDE (the final moves).
+// Terminal trace of a run, step by step. Prints to the console (the terminal
+// running `npm run dev` or a script) — nothing goes to the UI. Meant for
+// demos/teaching. Two sets of printers:
+//   - the weekly-plan advisor (advisor.ts): GATHER the grounded data, REASON
+//     (the model's own thinking), DECIDE (the final moves);
+//   - the agent loop (loop.ts), further down: per turn, 🧠 the plan, 🔧 the
+//     tool calls it chose, ↳ what each returned, then the answer.
 //
 // Toggle: on by default in dev; force with ADVISOR_TRACE=1, silence with
 // ADVISOR_TRACE=0.
