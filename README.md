@@ -112,7 +112,7 @@ fantasy-agent/
 ├── components/         shared UI pieces
 ├── prisma/             database schema + migrations
 ├── tests/              unit tests, one file per module tested
-├── docs/               agent.md (design write-up), presentation-cheatsheet.md
+├── docs/               agent.md (design write-up), presentation-cheatsheet.md, the slide deck
 └── NOTES.md            running dev log
 ```
 
