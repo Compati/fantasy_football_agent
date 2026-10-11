@@ -96,6 +96,17 @@ turns: list, six calls at once, answer. It's still a good short follow-up for sh
   mis-grading because it couldn't see the tool descriptions. 9/9 after fixes.
 - A demo dry run showed the agent advising on stale rosters (a dropped player still "on my team").
   The tools now re-sync rosters from Sleeper before answering.
+- I tested the cheapest model (Oct 11). Haiku 4.5 looped fine and was about 2.5x faster on the demo
+  question (13s vs 34s, 25k vs 43k input tokens), but passed only 4 of 9 eval cases. Sonnet 5 passed
+  9 of 9 the same day. Haiku's failures were all the same kind: saying things no tool returned (a
+  $15 bid, "9 to 11 weeks remaining", an injury for Ekeler), reading the Guillotine rank backwards,
+  and not saying it can't place a waiver claim. So Sonnet is the default by test, not by habit.
+
+## "Why not a smaller model?" / "What does the model add?"
+
+> I tried. The small model picks the same tools in the same order, so the loop is not the hard part.
+> It fails at the last step: staying inside what the tools returned. That is where the judgment is,
+> and it is what my eval set measures.
 
 ## Running it in a terminal: prep steps
 

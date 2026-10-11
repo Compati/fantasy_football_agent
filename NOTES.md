@@ -1,5 +1,42 @@
 # Dev log
 
+## 2026-10-11 — Haiku vs Sonnet for the agent; slide deck
+
+No code change. Tried Haiku 4.5 as the agent's default (the course guide says to use the cheapest
+model that can do the task), measured it, and went back to Sonnet 5.
+
+| Agent model | Eval set (Opus 5 judge) | Demo question |
+|---|---|---|
+| Haiku 4.5 | 4/9 | 5 turns, 11 calls, 13s, 25k in |
+| Sonnet 5 | 9/9 | 7 turns, 10 calls, 34s, 43k in |
+
+Haiku chose sensible tools and looped normally. All five failures were in the answer: a $15 bid no tool
+returned, "9 to 11 scoring weeks remaining" (no tool returns league length), "injury concerns" for
+Ekeler (no injury data was fetched), the Guillotine rank read backwards plus an invented standing, and
+no statement that it can't place a waiver claim. Sonnet's 9/9 is its second clean run (first was
+2026-10-01), and the first since the stale-roster fix.
+
+**Stale projections.** The first Haiku demo run was before this week's refresh: every tool returned
+zeros and "no waiver targets". The agent declined to recommend moves, but guessed the cause ("data is
+between updates, try again in 10–15 minutes"). Decided not to touch code before the presentation.
+After Oct 12: have the tools say "week N projections not loaded, run the refresh" instead of returning
+zeros, and refresh automatically in code (same pattern as `ensureRostersFresh`), not as an agent tool:
+whether data is stale has one right answer. A refresh takes 1–2 minutes, so it also can't fire
+mid-demo. The first `list_my_leagues` of the day took 50s for the roster re-sync.
+
+**Deck.** `docs/Fantasy-Agent-Presentation.pptx`, 6 slides with timed speaker notes (4:30 total):
+title, problem, the loop + fetch/compute/decide layers, what the agent decides, live demo, what
+testing caught + limits + next.
+
+**Likely Q&A soft spot.** The course guide says tools should return facts and the model should make
+the call. `get_lineup_advice` (swaps), `suggestedBid` and `evaluate_trade`'s verdict lean toward
+returning decisions. Each is arithmetic with one right answer; the model's judgment is across tools
+(which league, is a pickup a real upgrade, who to drop, what to check next). Single-tool questions are
+close to a script; the demo question is not.
+
+**Next:** timed rehearsal; screenshots + text backup with `DEMO_ANON=1`; refresh data Monday morning;
+upload the repo to Canvas.
+
 ## 2026-10-09 — repo tidy + README pass for the presentation
 
 No behavior change; docs, one test rename and a comment. Went through every file in the repo to check
