@@ -36,7 +36,8 @@ export async function refreshDefenseVsPosition(season: number, week: number): Pr
 }
 
 export async function refreshGameLines(season: number, week: number): Promise<{ games: number; withLines: number }> {
-  const games = (await getSchedule(season)).filter((g) => g.week === week);
+  // Sleeper keeps cancelled/rescheduled games in the schedule, so a team can appear twice in a week.
+  const games = (await getSchedule(season)).filter((g) => g.week === week && g.status !== "canceled");
   const lines = oddsApiConfigured() ? await fetchGameLines().catch(() => []) : [];
   const lineByPair = new Map(
     lines.map((l) => [`${teamAbbr(l.homeTeam)}|${teamAbbr(l.awayTeam)}`, l]),

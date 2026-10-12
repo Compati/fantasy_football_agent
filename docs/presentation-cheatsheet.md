@@ -108,6 +108,29 @@ turns: list, six calls at once, answer. It's still a good short follow-up for sh
 > It fails at the last step: staying inside what the tools returned. That is where the judgment is,
 > and it is what my eval set measures.
 
+## Presenting on Monday night: plan Week 6, not Week 5
+
+Sleeper only moves to the next week on Tuesday. On Monday night Week 5 is decided, so advice about
+it is useless. Set the planning week in the terminal first; every command after it (refresh, smoke
+test, evals, demo) then works on Week 6. It lasts for that terminal window only.
+
+```powershell
+$env:PLAN_WEEK = "6"
+```
+
+The demo question for that night:
+
+> Week 5 is almost over, so get me ready for Week 6. Find the league where I'm in the most trouble next week. Then fix it: set my best lineup, find a waiver pickup for my weakest starting spot with a bid and who to drop, and check the news on anyone you recommend.
+
+Oct 12 dry run: 6 turns, 7 tool calls, 25 seconds. It picked Escalated Calls (51% to win), found 6.5
+points on the bench, saw the starting defense was on bye (projected 0) and bid on a replacement.
+Only three projection sources have Week 6 numbers on a Monday (FFToday posts later).
+
+**Eval scores vary from run to run.** Sonnet 5 across four runs: 9/9, 9/9, 6/9, 7/9 (the last two on
+Week 6 data). Haiku 4.5: 4/9 on one run. The failures move between cases and are small ungrounded
+phrases the judge catches (a misquoted gap, "tied for best projection" when it wasn't). Say the
+range, not "9 of 9".
+
 ## Running it in a terminal: prep steps
 
 All commands run from the `fantasy-agent` folder in PowerShell.

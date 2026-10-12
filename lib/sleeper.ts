@@ -120,8 +120,15 @@ export async function getTransactions(leagueId: string, week: number): Promise<S
   return getJson<SleeperTransaction[]>(`${API}/league/${leagueId}/transactions/${week}`);
 }
 
-export function getNflState(): Promise<SleeperState> {
-  return getJson<SleeperState>(`${API}/state/nfl`);
+// PLAN_WEEK=6 plans that week instead of Sleeper's live one. Sleeper only moves
+// to the next week on Tuesday, so late in a week (Monday night) the live week
+// is already decided and the useful question is the next one. Unset = live week.
+export async function getNflState(): Promise<SleeperState> {
+  const state = await getJson<SleeperState>(`${API}/state/nfl`);
+  const planWeek = Number(process.env.PLAN_WEEK);
+  return Number.isInteger(planWeek) && planWeek >= 1 && planWeek <= 18
+    ? { ...state, week: planWeek, display_week: planWeek }
+    : state;
 }
 
 // ---- Schedule / byes -------------------------------------------------------

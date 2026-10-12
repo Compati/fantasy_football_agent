@@ -1,5 +1,29 @@
 # Dev log
 
+## 2026-10-12 — plan next week (`PLAN_WEEK`); cancelled-game fix; eval variance
+
+**Problem.** The presentation is during Monday Night Football. Sleeper's `/state/nfl` still says
+Week 5 until Tuesday, so the agent was advising on a week that is already decided.
+
+**`PLAN_WEEK`.** Every feature and ingest gets the week from `getNflState()` (`lib/sleeper.ts`), so
+the override lives there: `PLAN_WEEK=6` replaces the live week; unset = unchanged behavior. Set per
+terminal (`$env:PLAN_WEEK = "6"`), then run the refresh so Week 6 projections exist (Sleeper, ESPN
+and CBS had them on Monday; FFToday had none yet, so consensus is 3 sources).
+
+**Bug found doing this.** Loading Week 6 game lines failed on a unique constraint: Sleeper's schedule
+keeps a cancelled game (DAL–SEA) next to the rescheduled ones, so two teams appeared twice in the
+week. `refreshGameLines` now skips `status === "canceled"`. Week 5 never hit it.
+
+**Verified with PLAN_WEEK=6.** Tool smoke test clean. Next-week demo question: 6 turns, 7 calls, 25s;
+picked Escalated Calls (51%), +6.5 lineup swap, noticed the starting DEF on bye and bid on a
+replacement. 90 tests.
+
+**Eval variance.** Two Sonnet 5 eval runs on Week 6 scored 6/9 and 7/9 (below the 80% threshold),
+after 9/9 on Oct 1 and Oct 11. Failing cases differ between runs; each is one ungrounded or
+misquoted phrase caught by the judge. `trade-eval` failed both Week 6 runs for not passing on the
+tool's "estimated value" warning. So a single eval run is not a stable score: after the presentation,
+run each case several times and report a pass rate, and tighten the prompt on relaying tool warnings.
+
 ## 2026-10-11 — Haiku vs Sonnet for the agent; slide deck
 
 No code change. Tried Haiku 4.5 as the agent's default (the course guide says to use the cheapest
