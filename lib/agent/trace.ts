@@ -10,7 +10,7 @@
 // ADVISOR_TRACE=0.
 
 import type { LeagueContext } from "@/lib/agent/context";
-import type { AdvisorResult } from "@/lib/agent/advisor";
+import { ADVISOR_PRICING, type AdvisorResult, type AdvisorModel } from "@/lib/agent/advisor";
 
 export function traceEnabled(): boolean {
   const flag = process.env.ADVISOR_TRACE;
@@ -123,11 +123,16 @@ export function traceAgentDone(
   input: number,
   output: number,
   ms: number,
+  model: AdvisorModel,
 ) {
   if (!traceEnabled()) return;
+  const p = ADVISOR_PRICING[model];
+  const usd = (input * p.input + output * p.output) / 1_000_000;
+  // Under a cent shows 4 decimals so a cheap run doesn't print as $0.00.
+  const cost = usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2);
   log(
     `\n   ✅ answered after ${turns} turn(s), ${toolCalls} tool call(s) · ${(ms / 1000).toFixed(1)}s · ` +
-      `${input.toLocaleString()} in / ${output.toLocaleString()} out tokens`,
+      `${input.toLocaleString()} in / ${output.toLocaleString()} out tokens · ~$${cost}`,
   );
   for (const line of answer.split("\n")) log("   │ " + line);
   log(RULE + "\n");

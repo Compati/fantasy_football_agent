@@ -5,6 +5,7 @@
 import { prisma } from "@/lib/db";
 import { getMatchups, getNflState } from "@/lib/sleeper";
 import { blendProjections } from "@/lib/projections/consensus";
+import { ensureProjectionsFresh } from "@/lib/ingest/projections";
 import type { ProjectionRow } from "@/lib/types";
 
 export interface MatchupSide {
@@ -61,6 +62,7 @@ export async function getMatchup(teamId: string, week?: number): Promise<Matchup
       ? rows.find((r) => r.matchup_id === mine.matchup_id && r.roster_id !== mine.roster_id)
       : undefined;
 
+  await ensureProjectionsFresh(season, w);
   // Projected scores from each team's set starters.
   const starterIds = [
     ...(mine.starters ?? []),

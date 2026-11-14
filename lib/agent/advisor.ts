@@ -16,6 +16,14 @@ export const ADVISOR_MODELS = {
   "claude-haiku-4-5": "Haiku 4.5",
 } as const;
 
+// List price in USD per million tokens (input / output). Used only for the
+// terminal trace's cost line; ignores prompt-cache discounts (we don't cache).
+export const ADVISOR_PRICING: Record<keyof typeof ADVISOR_MODELS, { input: number; output: number }> = {
+  "claude-sonnet-5": { input: 2, output: 10 },
+  "claude-opus-5": { input: 5, output: 25 },
+  "claude-haiku-4-5": { input: 1, output: 5 },
+};
+
 export type AdvisorModel = keyof typeof ADVISOR_MODELS;
 export const DEFAULT_ADVISOR_MODEL: AdvisorModel = "claude-sonnet-5";
 

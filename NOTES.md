@@ -1,5 +1,35 @@
 # Dev log
 
+## 2026-11-13 — playoff-aware advice; eval `--runs N`
+
+**Playoff picture** (`lib/features/playoffs.ts`, agent tool `get_playoff_picture`). For H2H leagues:
+current seed vs the cut line and the chance of making the playoffs, from a seeded Monte Carlo of the
+remaining schedule (Sleeper publishes future pairings; weekly score ~ Normal(strength, 27), strength =
+points per game shrunk toward the league mean; seeding = wins then points-for). It also reruns the
+sim with this week's game forced to a win and to a loss, so the agent can say how much the game
+matters. Once the playoffs start it reads Sleeper's `winners_bracket` (alive / eliminated / opponent).
+Guillotine leagues return "not applicable". System prompt got a Playoffs rule (favor ceiling on
+must-win close calls; quote the tool's numbers). Live (wk 10): Panini seed 8 → 23.8% (win 35.7% /
+lose 12.2%); Escalated seed 11 → 23.3%. 96 tests. **Bracket path is unit-tested on fixtures only; check
+it against real data when playoffs start (wk 15).** Not modeled: first-round byes, league-specific
+tiebreakers other than points-for.
+
+**Projections guard** (`ensureProjectionsFresh` in `lib/ingest/projections.ts`). Readers used to take
+whatever was in the table, so an empty week became zeros. Now start/sit, waivers, matchup, survival,
+trade finder and `lookup_player` call it first: refresh when the week has <50 rows or the newest is
+>12h old (single-flight, 10-min retry cooldown after a failure); a failed refresh is tolerated if old
+rows exist; if the week is still empty it throws `ProjectionsUnavailableError` ("Week N projections
+are not loaded…"). The agent gets that text as a tool error to relay; the league page shows it as a
+notice instead of crashing. 8 tests (fake store, no network). Cost: the first tool call after 12h
+can take a while (4-source scrape).
+
+**League page:** new `PlayoffPanel` (seed, odds, win/lose odds, standings around the cut line,
+bracket status). Odds >99.5% show ">99%" so a sim never reads as certain.
+
+**Eval `--runs N`.** `scripts/agent-eval.ts --runs 5` runs every case N times and prints a per-case
+pass rate plus the checks that fail most. New case `playoff-odds`. **Baseline NOT recorded:** the
+`ANTHROPIC_API_KEY` in `.env` returned 401 invalid x-api-key, so all 45 runs crashed.
+
 ## 2026-10-12 — plan next week (`PLAN_WEEK`); cancelled-game fix; eval variance
 
 **Problem.** The presentation is during Monday Night Football. Sleeper's `/state/nfl` still says

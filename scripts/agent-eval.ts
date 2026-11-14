@@ -8,7 +8,8 @@
 //   npx tsx scripts/agent-eval.ts                  all cases, Sonnet 5 agent, Opus 5 judge
 //   npx tsx scripts/agent-eval.ts bad-league faab  only these cases
 //   npx tsx scripts/agent-eval.ts --model claude-haiku-4-5
-//   npx tsx scripts/agent-eval.ts --no-judge       code checks only (cheaper)
+//   npx tsx scripts/agent-eval.ts --runs 5         every case 5 times -> per-case pass rate (one run is noisy)
+//   npx tsx scripts/agent-eval.ts --no-judge      code checks only (cheaper)
 //   npx tsx scripts/agent-eval.ts --trace          print each run's tool calls (runs one at a time)
 //
 // Runs against the live local DB (my real leagues), so refresh data first:
@@ -110,6 +111,12 @@ async function buildCases(userId: string): Promise<EvalCase[]> {
       checks: [c.finished, c.called("get_matchup"), c.citesSurvivalProb, c.maxToolCalls(6)],
       expect: `Resolves "Guillotine" to "${guillotine.league.name}". Answers yes/no on elimination danger citing the survival probability, the cushion over the elimination line and rank. It must not talk about beating a head-to-head opponent.`,
     },
+    {
+      id: "playoff-odds",
+      question: `What are my chances of making the playoffs in ${panini.league.name}, and how much does this week's game matter?`,
+      checks: [c.finished, c.called("get_playoff_picture"), c.noToolErrors, c.citesPlayoffProb, c.maxToolCalls(5)],
+      expect: `Resolves "${panini.league.name}" and quotes the tool's makePlayoffsProb. Says how much this week's result matters using the tool's win-vs-lose odds (ifWinThisWeek / ifLoseThisWeek or the swing), and does not invent a different number. It must not claim the season is decided or give odds the tool didn't return.`,
+    },
   ];
 }
 
@@ -185,9 +192,11 @@ async function main() {
   const flag = (f: string) => args.includes(f);
   const modelArg = args[args.indexOf("--model") + 1];
   const model = flag("--model") && isAdvisorModel(modelArg) ? modelArg : DEFAULT_ADVISOR_MODEL;
+  const runsArg = flag("--runs") ? args[args.indexOf("--runs") + 1] : undefined;
+  const runs = runsArg ? Math.max(1, Math.floor(Number(runsArg)) || 1) : 1;
   const judge = !flag("--no-judge");
   const trace = flag("--trace");
-  const only = args.filter((a) => !a.startsWith("--") && a !== modelArg);
+  const only = args.filter((a) => !a.startsWith("--") && a !== modelArg && a !== runsArg);
   process.env.ADVISOR_TRACE = trace ? "1" : "0";
 
   const conn = await prisma.connection.findFirstOrThrow({ where: { platform: "sleeper" } });
@@ -195,16 +204,21 @@ async function main() {
   const cases = only.length ? all.filter((k) => only.includes(k.id)) : all;
   if (!cases.length) throw new Error(`No such case. Cases: ${all.map((k) => k.id).join(", ")}`);
 
-  console.log(`\n📋 AGENT EVAL · ${cases.length} case(s) · agent: ${ADVISOR_MODELS[model]} · judge: ${judge ? ADVISOR_MODELS[JUDGE_MODEL] : "off"}`);
+  console.log(
+    `\n📋 AGENT EVAL · ${cases.length} case(s) × ${runs} run(s) · agent: ${ADVISOR_MODELS[model]} · judge: ${judge ? ADVISOR_MODELS[JUDGE_MODEL] : "off"}`,
+  );
 
-  // A small worker pool; results are reported in case order once all are in.
-  const results: CaseResult[] = new Array(cases.length);
+  // Every (case, run) pair is one task for a small worker pool; results are
+  // reported in case order once all are in. Several runs of one case are the
+  // point: a single run can't tell a flaky case from a broken one.
+  const tasks = cases.flatMap((ec) => Array.from({ length: runs }, (_, run) => ({ ec, run })));
+  const results: CaseResult[] = new Array(tasks.length);
   let next = 0;
   const worker = async () => {
-    while (next < cases.length) {
+    while (next < tasks.length) {
       const i = next++;
-      results[i] = await runCase(cases[i], conn.userId, model, judge);
-      console.log(`   … ${cases[i].id} ${results[i].pass ? "pass" : "FAIL"}`);
+      results[i] = await runCase(tasks[i].ec, conn.userId, model, judge);
+      console.log(`   … ${tasks[i].ec.id}${runs > 1 ? ` #${tasks[i].run + 1}` : ""} ${results[i].pass ? "pass" : "FAIL"}`);
     }
   };
   await Promise.all(Array.from({ length: trace ? 1 : CONCURRENCY }, worker));
@@ -214,14 +228,34 @@ async function main() {
   const rate = passed / results.length;
   const sum = (f: (r: CaseResult) => number) => results.reduce((a, r) => a + f(r), 0);
   const ok = rate >= PASS_THRESHOLD;
+  if (runs > 1) {
+    // Per-case pass rate, plus which individual checks fail (code or judge).
+    console.log("\n📊 PER-CASE PASS RATE");
+    for (const ec of cases) {
+      const rs = results.filter((r) => r.id === ec.id);
+      const p = rs.filter((r) => r.pass).length;
+      const fails = new Map<string, number>();
+      const bump = (k: string) => fails.set(k, (fails.get(k) ?? 0) + 1);
+      for (const r of rs) {
+        for (const k of r.checks) if (k.fail) bump(`code:${k.name}`);
+        if (r.judgment) {
+          const j = r.judgment;
+          for (const k of JUDGE_CRITERIA) if (!j[k].pass) bump(`judge:${k}`);
+        } else if (judge) bump("judge:did not run");
+      }
+      const why = [...fails].sort((a, b) => b[1] - a[1]).map(([n, k]) => `${n} ×${k}`).join(", ");
+      console.log(`   ${p === rs.length ? "✅" : p === 0 ? "❌" : "⚠️ "} ${ec.id.padEnd(22)} ${p}/${rs.length}${why ? `   fails: ${why}` : ""}`);
+    }
+  }
+
   console.log(
-    `\n${ok ? "✅" : "❌"} ${passed}/${results.length} cases passed (${Math.round(rate * 100)}%, threshold ${PASS_THRESHOLD * 100}%)` +
+    `\n${ok ? "✅" : "❌"} ${passed}/${results.length} runs passed (${Math.round(rate * 100)}%, threshold ${PASS_THRESHOLD * 100}%)` +
       ` · agent tokens ${sum((r) => r.tokens.input).toLocaleString()} in / ${sum((r) => r.tokens.output).toLocaleString()} out`,
   );
 
   mkdirSync("evals/results", { recursive: true });
   const file = `evals/results/${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-  writeFileSync(file, JSON.stringify({ model, judge: judge ? JUDGE_MODEL : null, passed, total: results.length, results }, null, 2));
+  writeFileSync(file, JSON.stringify({ model, runs, judge: judge ? JUDGE_MODEL : null, passed, total: results.length, results }, null, 2));
   console.log(`   full transcripts: ${file}`);
   if (!ok) process.exitCode = 1;
 }

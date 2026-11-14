@@ -22,6 +22,7 @@ import { getNflState, getProjections, getLeague } from "@/lib/sleeper";
 import { blendProjections } from "@/lib/projections/consensus";
 import { injuryAdjustedProj } from "@/lib/features/injury";
 import { starterSlots } from "@/lib/ingest/sleeper-transform";
+import { ensureProjectionsFresh } from "@/lib/ingest/projections";
 import { optimizeLineup, type LineupPlayer } from "@/lib/features/startsit";
 import type { ProjectionRow } from "@/lib/types";
 
@@ -239,6 +240,7 @@ export async function tradeIdeasForTeam(teamId: string, limit = 5): Promise<Trad
   const ids = [
     ...new Set(league.teams.flatMap((t) => t.roster.map((r) => r.sleeperId).filter((x): x is string => !!x))),
   ];
+  await ensureProjectionsFresh(league.season, week);
   const [players, values, projRows, ...future] = await Promise.all([
     prisma.player.findMany({ where: { sleeperId: { in: ids } } }),
     prisma.tradeValue.findMany({

@@ -9,6 +9,7 @@
 import { prisma } from "@/lib/db";
 import { getMatchups, getNflState } from "@/lib/sleeper";
 import { blendProjections } from "@/lib/projections/consensus";
+import { ensureProjectionsFresh } from "@/lib/ingest/projections";
 import type { ProjectionRow } from "@/lib/types";
 
 export interface SurvivalTeam {
@@ -138,6 +139,7 @@ export async function getSurvival(teamId: string, week?: number): Promise<Surviv
 
   const nameByRosterId = new Map(team.league.teams.map((t) => [t.externalId, t.name]));
 
+  await ensureProjectionsFresh(season, w);
   // One consensus projection lookup for every set starter across the field.
   const allStarterIds = rows.flatMap((r) => (r.starters ?? []).filter((id) => id && id !== "0"));
   const projRows = await prisma.projection.findMany({

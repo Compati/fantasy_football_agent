@@ -43,6 +43,7 @@ has enough. The tools are thin read-only wrappers around feature functions that 
 | `list_my_leagues` | Prisma: my teams, formats, record, FAAB left, current week |
 | `get_lineup_advice` | `startSitForTeam` (+ bench market values for drop decisions) |
 | `get_matchup` | `getMatchup` / `getSurvival` (Guillotine) |
+| `get_playoff_picture` | `getPlayoffPicture` (seed vs cut line, Monte Carlo playoff odds, win-vs-lose swing; bracket status once playoffs start) |
 | `get_waiver_targets` | `waiverTargets` (FAAB bids calibrated on the league's real bids) |
 | `lookup_player` | player search + availability / value / FAAB in a league |
 | `get_trade_ideas` | `tradeIdeasForTeam` (fair + both lineups improve, near vs ROS) |

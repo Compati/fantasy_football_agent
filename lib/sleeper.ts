@@ -120,6 +120,23 @@ export async function getTransactions(leagueId: string, week: number): Promise<S
   return getJson<SleeperTransaction[]>(`${API}/league/${leagueId}/transactions/${week}`);
 }
 
+// One slot of the playoff bracket. t1/t2 are roster_ids once known (null while
+// they depend on an earlier round); w/l are the winner/loser roster_ids once the
+// game is played. Placement/consolation games carry `p`.
+export interface SleeperBracketGame {
+  r: number; // round, 1-based
+  m: number; // game id
+  t1: number | null;
+  t2: number | null;
+  w: number | null;
+  l: number | null;
+  p?: number;
+}
+
+export async function getWinnersBracket(leagueId: string): Promise<SleeperBracketGame[]> {
+  return getJson<SleeperBracketGame[]>(`${API}/league/${leagueId}/winners_bracket`);
+}
+
 // PLAN_WEEK=6 plans that week instead of Sleeper's live one. Sleeper only moves
 // to the next week on Tuesday, so late in a week (Monday night) the live week
 // is already decided and the useful question is the next one. Unset = live week.

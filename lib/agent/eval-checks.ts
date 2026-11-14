@@ -114,6 +114,19 @@ export const citesSurvivalProb: Check = {
   },
 };
 
+// The answer quotes the playoff probability the tool returned (as a percent).
+export const citesPlayoffProb: Check = {
+  name: "cites the tool's playoff %",
+  run: (r) => {
+    const p = outputsOf(r, "get_playoff_picture").find((o) => typeof o.makePlayoffsProb === "number");
+    if (!p) return "no playoff picture result with a probability";
+    const pct = (p.makePlayoffsProb as number) * 100;
+    // Accept the rounded value or one decimal ("24%" or "23.8%").
+    const forms = [Math.round(pct).toString(), pct.toFixed(1)];
+    return forms.some((f) => new RegExp(`\\b${f.replace(".", "\\.")}\\s?%`).test(r.answer)) ? null : `${forms[1]}% not in the answer`;
+  },
+};
+
 export function runChecks(run: AgentRun, checks: Check[]): { name: string; fail: string | null }[] {
   return checks.map((c) => {
     try {

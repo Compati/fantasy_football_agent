@@ -20,6 +20,8 @@ import { tradeIdeasForTeam, type HorizonIdeas } from "@/lib/features/trade-finde
 import { evaluateTrade } from "@/lib/features/trade";
 import { getMatchup } from "@/lib/features/matchup";
 import { getSurvival } from "@/lib/features/survival";
+import { getPlayoffPicture } from "@/lib/features/playoffs";
+import { ensureProjectionsFresh, ProjectionsUnavailableError } from "@/lib/ingest/projections";
 import { rosterOutlook } from "@/lib/features/roster";
 import { newsForPlayers } from "@/lib/features/news";
 import { anonymize, buildAliases, demoAnonEnabled } from "@/lib/agent/anonymize";
@@ -287,6 +289,25 @@ export const TOOLS: AgentTool[] = [
   },
   {
     definition: {
+      name: "get_playoff_picture",
+      description:
+        "Playoff picture for one head-to-head league: current seed vs. the playoff cut line, chance of making the playoffs (Monte Carlo of the remaining schedule), and how much THIS week's result matters (makePlayoffsProb if you win vs. if you lose, and the swing). Once the playoffs start: whether you're still alive in the bracket, the round and opponent. Not applicable to Guillotine leagues (use get_matchup there). Call this when the question is about the playoffs, seeding, must-win games, or how aggressive to be.",
+      input_schema: { type: "object", properties: { league: LEAGUE_PARAM }, required: ["league"] },
+    },
+    run: async (input, ctx) => {
+      const team = await resolveTeam(ctx.userId, input.league);
+      const p = await getPlayoffPicture(team.id);
+      if (!p.applicable) return { league: team.league.name, applicable: false, reason: p.reason };
+      return {
+        league: team.league.name,
+        ...p,
+        // Top of the table only: the cut line and the teams around it.
+        standings: p.standings.filter((s) => s.seed <= p.playoffTeams + 2 || s.isMine),
+      };
+    },
+  },
+  {
+    definition: {
       name: "get_waiver_targets",
       description:
         "Best unrostered players in one league, ranked by this week's projection, each with market value and (FAAB leagues) a suggested bid calibrated on this league's real past winning bids: range [low, high] where low ≈ median winning bid and high wins ~80% of the time; need = starts|marginal|depth for this roster; hot = trending add across Sleeper.",
@@ -335,6 +356,7 @@ export const TOOLS: AgentTool[] = [
       const team = input.league ? await resolveTeam(ctx.userId, input.league) : null;
       const season = team?.league.season ?? new Date().getFullYear();
       const week = await currentWeek();
+      await ensureProjectionsFresh(season, week);
       const ids = found.map((p) => p.sleeperId);
       const consensus = blendProjections(
         (await prisma.projection.findMany({ where: { sleeperId: { in: ids }, season, week } })) as unknown as ProjectionRow[],
@@ -526,7 +548,11 @@ export async function runTool(
     }
     return { content: JSON.stringify(result), summary, isError: false };
   } catch (e) {
-    const msg = e instanceof ToolInputError ? e.message : `Tool failed: ${(e as Error).message}`;
+    // Both are written for the model to read and relay (wrong league name; projections not loaded).
+    const msg =
+      e instanceof ToolInputError || e instanceof ProjectionsUnavailableError
+        ? e.message
+        : `Tool failed: ${(e as Error).message}`;
     return { content: msg, summary: msg, isError: true };
   }
 }

@@ -9,6 +9,7 @@ import { injuryAdjustedProj } from "@/lib/features/injury";
 import type { ProjectionRow } from "@/lib/types";
 import { faabTier, faabRange, faabNeed, bidForNeed, claimSamples, inSeasonalWindow, type ClaimSample, type FaabRange, type FaabNeed } from "@/lib/features/faab";
 import { ensureWaiverHistoryFresh } from "@/lib/ingest/waiver-history";
+import { ensureProjectionsFresh } from "@/lib/ingest/projections";
 import { optimizeLineup } from "@/lib/features/startsit";
 import { starterSlots } from "@/lib/ingest/sleeper-transform";
 import { isEligible } from "@/lib/features/eligibility";
@@ -82,6 +83,8 @@ export async function waiverTargets(
   const state = await getNflState();
   const week = opts.week ?? (state.week > 0 ? state.week : 1);
   const season = league.season;
+
+  await ensureProjectionsFresh(season, week);
 
   // Everyone rostered anywhere in the league is unavailable.
   const rostered = new Set<string>();

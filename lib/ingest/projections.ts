@@ -139,3 +139,96 @@ export async function refreshProjections(
     fftodayUnresolved: f.fftoday.unresolved,
   };
 }
+
+// ---- Freshness guard ----------------------------------------------------------
+// Readers used to take whatever was in the table: a week with no rows (never
+// refreshed, or the new week just started) silently became zeros. Now every
+// reader calls ensureProjectionsFresh first: it refreshes when the week is
+// empty or old, and throws ProjectionsUnavailableError when there is still
+// nothing — so callers say "not loaded" instead of advising on zeros.
+
+// A real week has several hundred rows per source; this only separates "loaded" from "empty".
+export const MIN_PROJECTION_ROWS = 50;
+// Projections move with injuries and news; re-pull after this long (best effort).
+export const PROJECTION_STALE_MS = 12 * 60 * 60 * 1000;
+// After a failed refresh, don't re-scrape on every tool call.
+const RETRY_COOLDOWN_MS = 10 * 60 * 1000;
+
+export class ProjectionsUnavailableError extends Error {
+  constructor(
+    public season: number,
+    public week: number,
+    detail?: string,
+  ) {
+    super(
+      `Week ${week} projections are not loaded${detail ? ` (${detail})` : ""}. ` +
+        `Run the projections refresh (npx tsx scripts/phase2-check.ts) and try again; ` +
+        `until then any projected points would be meaningless zeros.`,
+    );
+  }
+}
+
+export type ProjectionStatus = "missing" | "stale" | "ok";
+
+export function projectionStatus(rows: number, newest: Date | null, now = Date.now()): ProjectionStatus {
+  if (rows < MIN_PROJECTION_ROWS || !newest) return "missing";
+  return now - newest.getTime() > PROJECTION_STALE_MS ? "stale" : "ok";
+}
+
+export interface FreshnessDeps {
+  stats: (season: number, week: number) => Promise<{ rows: number; newest: Date | null }>;
+  refresh: (season: number, week: number) => Promise<unknown>;
+  now?: () => number;
+}
+
+const defaultDeps: FreshnessDeps = {
+  stats: async (season, week) => {
+    const [rows, newest] = await Promise.all([
+      prisma.projection.count({ where: { season, week } }),
+      prisma.projection.findFirst({ where: { season, week }, orderBy: { updatedAt: "desc" }, select: { updatedAt: true } }),
+    ]);
+    return { rows, newest: newest?.updatedAt ?? null };
+  },
+  refresh: (season, week) => refreshProjections(season, week),
+};
+
+const inFlight = new Map<string, Promise<void>>();
+const lastFailure = new Map<string, number>();
+
+// Make sure (season, week) has usable projections. Parallel callers share one
+// refresh. A failed refresh is tolerated when older rows exist (stale data beats
+// none) and fatal when the week is empty.
+export function ensureProjectionsFresh(season: number, week: number, deps: FreshnessDeps = defaultDeps): Promise<void> {
+  const key = `${season}|${week}`;
+  const hit = inFlight.get(key);
+  if (hit) return hit;
+  const now = deps.now ?? Date.now;
+  const p = (async () => {
+    const { rows, newest } = await deps.stats(season, week);
+    const status = projectionStatus(rows, newest, now());
+    if (status === "ok") return;
+
+    const failedAt = lastFailure.get(key);
+    const coolingDown = failedAt != null && now() - failedAt < RETRY_COOLDOWN_MS;
+    let failure: string | undefined;
+    if (!coolingDown) {
+      try {
+        await deps.refresh(season, week);
+        lastFailure.delete(key);
+      } catch (e) {
+        lastFailure.set(key, now());
+        failure = (e as Error).message;
+      }
+    } else {
+      failure = "a refresh just failed; not retrying yet";
+    }
+
+    const after = await deps.stats(season, week);
+    if (projectionStatus(after.rows, after.newest, now()) === "missing") {
+      throw new ProjectionsUnavailableError(season, week, failure ?? "the refresh returned no rows");
+    }
+    // stale-but-present after a failed refresh: carry on with what we have.
+  })().finally(() => inFlight.delete(key));
+  inFlight.set(key, p);
+  return p;
+}

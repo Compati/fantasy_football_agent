@@ -12,6 +12,7 @@ import { playerDetailMap } from "@/lib/players";
 import type { ProjectionRow } from "@/lib/types";
 import { matchupsFor, type PlayerMatchup } from "@/lib/features/opponent";
 import { ensureOpponentDataFresh } from "@/lib/ingest/opponent";
+import { ensureProjectionsFresh } from "@/lib/ingest/projections";
 
 export interface LineupPlayer {
   sleeperId: string;
@@ -90,6 +91,7 @@ export async function startSitForTeam(
   const season = team.league.season;
   const w = week ?? (state.week > 0 ? state.week : 1);
 
+  await ensureProjectionsFresh(season, w);
   const slots = starterSlots((team.league.rosterPositions as string[]) ?? []);
 
   // Consensus projection for each rostered player that maps to a canonical id.

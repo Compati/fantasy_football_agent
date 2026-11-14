@@ -6,6 +6,8 @@ import { startSitForTeam } from "@/lib/features/startsit";
 import { waiverTargets } from "@/lib/features/waivers";
 import { getMatchup } from "@/lib/features/matchup";
 import { getSurvival } from "@/lib/features/survival";
+import { getPlayoffPicture } from "@/lib/features/playoffs";
+import { ProjectionsUnavailableError } from "@/lib/ingest/projections";
 import { rosterOutlook } from "@/lib/features/roster";
 import { newsForPlayers } from "@/lib/features/news";
 import { propsForPlayers } from "@/lib/features/props";
@@ -16,6 +18,7 @@ import { InjuryBadge } from "@/components/InjuryBadge";
 import { TradeAnalyzer } from "./TradeAnalyzer";
 import { tradeIdeasForTeam, type TfPlayer, type HorizonIdeas } from "@/lib/features/trade-finder";
 import { Recommendations } from "./Recommendations";
+import { PlayoffPanel } from "./PlayoffPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -59,14 +62,32 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const [startSit, waivers, matchup, survival, outlook, trades] = await Promise.all([
-    startSitForTeam(myTeam.id),
-    waiverTargets(myTeam.id, { limit: 15 }),
-    getMatchup(myTeam.id).catch(() => null),
-    getSurvival(myTeam.id).catch(() => null),
-    rosterOutlook(myTeam.id).catch(() => null),
-    tradeIdeasForTeam(myTeam.id).catch(() => null),
-  ]);
+  let loaded;
+  try {
+    loaded = await Promise.all([
+      startSitForTeam(myTeam.id),
+      waiverTargets(myTeam.id, { limit: 15 }),
+      getMatchup(myTeam.id).catch(() => null),
+      getSurvival(myTeam.id).catch(() => null),
+      rosterOutlook(myTeam.id).catch(() => null),
+      tradeIdeasForTeam(myTeam.id).catch(() => null),
+      getPlayoffPicture(myTeam.id).catch(() => null),
+    ]);
+  } catch (e) {
+    // No projections for this week (and a refresh couldn't get any): say so
+    // rather than render a page of zeros.
+    if (e instanceof ProjectionsUnavailableError) {
+      return (
+        <main className="flex-1 p-6 max-w-5xl mx-auto w-full">
+          <BackLink />
+          <h1 className="mt-2 text-2xl font-semibold">{league.name}</h1>
+          <p className="mt-4 rounded-xl border border-border bg-surface p-4 text-sm text-warn">{e.message}</p>
+        </main>
+      );
+    }
+    throw e;
+  }
+  const [startSit, waivers, matchup, survival, outlook, trades, playoffs] = loaded;
 
   const contextIds = [
     ...myTeam.roster.map((r) => r.sleeperId).filter((id): id is string => !!id),
@@ -153,6 +174,9 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
           </div>
         </section>
       )}
+
+      {/* Playoff picture (head-to-head leagues) */}
+      {playoffs && playoffs.applicable && <PlayoffPanel p={playoffs} />}
 
       {/* Guillotine survival (play-the-field leagues, no head-to-head) */}
       {survival && (

@@ -52,6 +52,7 @@ Rules for the answer:
 - Projections already include matchups; a backtest showed overriding them on matchup grounds made start/sit calls worse. On close calls, go with the higher projection; mention matchup only as color.
 - Drops: choose by rest-of-season market value at a position of surplus, not by this week's projection — never drop a valuable player just because he's hurt this week. An "unknown" market value means no data (usual for IR players), NOT low value — don't pick that player as the drop; if he's the only obvious cut, say it depends on whether his injury is season-ending and give a safe alternative.
 - Trades: prefer ideas that help on both windows; flag "helps now, costs you later".
+- Playoffs: for any head-to-head league, weigh where the manager stands before advising. Late in the season, call get_playoff_picture. If the game is a must-win (thisWeekSwing is large) or the manager is on the bubble, favor the higher-ceiling option on close calls and say why; if they are locked in or out, say so and shift focus to the playoff weeks (healthy, high-upside starters) rather than this week. Quote makePlayoffsProb and the win/lose odds from the tool, never your own estimate. Once the playoffs have started, say whether they are alive and who they face.
 - News is color only, never the sole reason for a move.
 - You only advise — you can't make moves. Tell the manager what to do. If they ask you to make a move for them (set a lineup, put in a claim, send a trade), say first, in plain words, that you can't do that and they'll need to do it in the app themselves; then give the recommendation.
 - Be concise: lead with the answer, then the key numbers behind it. Use short bullets when covering multiple leagues or moves.`;
@@ -111,7 +112,7 @@ export async function runAgent(
         .trim();
       onEvent({ type: "answer", text: text || "(no answer)" });
       const ms = Date.now() - startedAt;
-      traceAgentDone(text, turn, toolCalls, inputTokens, outputTokens, ms);
+      traceAgentDone(text, turn, toolCalls, inputTokens, outputTokens, ms, model);
       onEvent({ type: "done", turns: turn, toolCalls, inputTokens, outputTokens, ms });
       return;
     }
